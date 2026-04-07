@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Estoque Profissional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div id="app" class="max-w-4xl mx-auto p-4">
+        <header class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h1 class="text-2xl font-bold text-gray-800">Sistema de Estoque</h1>
+            <nav class="flex gap-4 mt-4 border-t pt-4">
+                <button onclick="mudarAba('estoque')" class="hover:text-blue-600 font-medium">Estoque</button>
+                <button onclick="mudarAba('relatorio')" class="hover:text-blue-600 font-medium">Relatório</button>
+                <button onclick="mudarAba('obs')" class="hover:text-blue-600 font-medium">Observações</button>
+            </nav>
+        </header>
+
+        <section id="aba-estoque" class="aba">
+            <div class="flex justify-between mb-4">
+                <button onclick="criarItem()" class="bg-blue-600 text-white px-4 py-2 rounded"> + Novo Item</button>
+                <button onclick="criarCategoria()" class="bg-gray-600 text-white px-4 py-2 rounded"> + Nova Categoria</button>
+            </div>
+            <div id="lista-estoque" class="grid gap-4">
+                </div>
+        </section>
+
+        <section id="aba-relatorio" class="aba hidden">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-bold mb-4">Movimentações por Período</h2>
+                <div id="filtro-meses" class="flex gap-2 mb-6 flex-wrap">
+                    </div>
+                <div class="flex gap-2 mb-4">
+                    <button onclick="abrirListagem()" class="bg-green-600 text-white px-4 py-2 rounded text-sm">Listagem por Data</button>
+                    <button onclick="removerMovimentacoesSelecionadas()" class="bg-red-500 text-white px-4 py-2 rounded text-sm">Remover Histórico Sel.</button>
+                </div>
+                <div id="tabela-relatorio" class="overflow-x-auto">
+                    </div>
+            </div>
+        </section>
+
+        <section id="aba-obs" class="aba hidden">
+            <div id="lista-obs" class="grid gap-4">
+                </div>
+        </section>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO SUPABASE ---
+        // Substitua pelos seus dados do painel do Supabase (Project Settings > API)
+        const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let abaAtual = 'estoque';
+
+        async function init() {
+            carregarEstoque();
+        }
+
+        // --- FUNÇÕES DE NAVEGAÇÃO ---
+        function mudarAba(nome) {
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
+            document.getElementById(`aba-${nome}`).classList.remove('hidden');
+            if(nome === 'estoque') carregarEstoque();
+            if(nome === 'relatorio') carregarRelatorio();
+            if(nome === 'obs') carregarObservacoes();
+        }
+
+        // --- LÓGICA DE ESTOQUE ---
+        async function carregarEstoque() {
+            const { data: itens } = await supabase.from('itens').select('*').order('nome');
+            const container = document.getElementById('lista-estoque');
+            container.innerHTML = itens.map(item => `
+                <div class="bg-white p-4 rounded shadow flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-gray-700">${item.nome}</span>
+                        ${item.quantidade <= 0 ? '<span class="text-red-600 font-bold ml-2">ESGOTADO</span>' : ''}
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="alterarQtd('${item.id}', -1, ${item.quantidade})" class="bg-red-100 text-red-600 w-8 h-8 rounded">-</button>
+                        <span class="font-mono text-lg">${item.quantidade}</span>
+                        <button onclick="alterarQtd('${item.id}', 1, ${item.quantidade})" class="bg-green-100 text-green-600 w-8 h-8 rounded">+</button>
+                        <button onclick="abrirModalDescricao('${item.id}')" class="text-xs text-gray-400 underline">Add Obs</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function alterarQtd(id, mudanca, atual) {
+            const novaQtd = atual + mudanca;
+            if (novaQtd < 0) return;
+
+            // Atualiza item
+            await supabase.from('itens').update({ quantidade: novaQtd }).eq('id', id);
+            
+            // Registra movimentação
+            await supabase.from('movimentacoes').insert([{ 
+                item_id: id, 
+                quantidade_alterada: mudanca 
+            }]);
+
+            carregarEstoque();
+        }
+
+        async function abrirModalDescricao(id) {
+            const desc = prompt("Digite a descrição/observação para este item:");
+            if(desc) {
+                await supabase.from('observacoes').insert([{ item_id: id, descricao: desc }]);
+                alert("Observação salva!");
+            }
+        }
+
+        // Inicializa o app
+        init();
+    </script>
+</body>
+</html>
