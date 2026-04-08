@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estoque Master - Login & Gerenciamento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
+        .esgotado { color: #ef4444; font-weight: bold; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        #filtro-meses::-webkit-scrollbar { display: none; }
+        #filtro-meses { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20">
+
+    <div id="tela-login" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-8">
+            <h2 id="login-titulo" class="text-2xl font-black text-center text-gray-800 mb-6">ENTRAR NO SISTEMA</h2>
+            
+            <div class="space-y-4">
+                <div id="campo-usuario" class="hidden">
+                    <label class="text-xs font-bold text-gray-400 uppercase">Nome de Usuário</label>
+                    <input type="text" id="reg-nome" class="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-400 uppercase">E-mail</label>
+                    <input type="email" id="auth-email" class="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 transition">
+                </div>
+                <div id="campo-senha">
+                    <label class="text-xs font-bold text-gray-400 uppercase">Senha</label>
+                    <input type="password" id="auth-senha" class="w-full border-b-2 border-gray-100 py-2 outline-none focus:border-blue-500 transition">
+                </div>
+
+                <button id="btn-principal" onclick="autenticar()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition mt-4">Entrar</button>
+                
+                <p class="text-center text-sm text-gray-500 mt-6">
+                    <span id="texto-alternar">Não tem uma conta?</span> 
+                    <button onclick="alternarModo()" class="text-blue-600 font-bold underline" id="btn-alternar">Cadastrar-se</button>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="max-w-2xl mx-auto p-4 hidden">
+        <header class="bg-white shadow-sm rounded-xl p-4 mb-6 sticky top-2 z-10">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex flex-col">
+                    <h1 class="text-xl font-black text-gray-800 tracking-tight">MEU ESTOQUE</h1>
+                    <span id="user-display" class="text-[10px] text-blue-500 font-bold uppercase"></span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="criarCategoria()" class="text-xs bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"> + Categoria</button>
+                    <button onclick="criarItem()" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"> + Item</button>
+                    <button onclick="location.reload()" class="text-xs bg-red-50 text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-100 transition">Sair</button>
+                </div>
+            </div>
+            <nav class="flex justify-around text-sm text-gray-500 border-t pt-3">
+                <button id="btn-estoque" onclick="mudarAba('estoque')" class="pb-1 transition-all">Estoque</button>
+                <button id="btn-relatorio" onclick="mudarAba('relatorio')" class="pb-1 transition-all">Relatório</button>
+                <button id="btn-obs" onclick="mudarAba('obs')" class="pb-1 transition-all">Observações</button>
+            </nav>
+        </header>
+
+        <section id="aba-estoque" class="aba"><div id="lista-estoque" class="space-y-3"></div></section>
+        <section id="aba-relatorio" class="aba hidden">
+            <div class="bg-white p-5 rounded-xl shadow-sm">
+                <h3 class="font-bold mb-4 flex justify-between items-center italic">Relatório <span id="ano-label" class="text-blue-600 text-sm">2026</span></h3>
+                <div id="filtro-meses" class="flex gap-2 overflow-x-auto pb-4 mb-4 border-b"></div>
+                <div class="flex justify-between mb-4">
+                    <button onclick="abrirListagem()" class="text-[10px] uppercase tracking-wider font-bold bg-green-500 text-white px-3 py-1 rounded shadow-sm hover:bg-green-600 transition">Listagem</button>
+                    <button onclick="removerMovimentacoes()" class="text-[10px] uppercase tracking-wider font-bold bg-red-50 text-red-600 px-3 py-1 rounded border border-red-100">Limpar Histórico</button>
+                </div>
+                <div id="tabela-relatorio" class="space-y-2 text-sm"></div>
+            </div>
+        </section>
+        <section id="aba-obs" class="aba hidden"><div id="lista-obs" class="space-y-3"></div></section>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const SENHA_ADMIN = "eta2026estoque"; 
+        let modoRegistro = false;
+        let usuarioLogado = null;
+        const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+        window.onload = () => mudarAba('estoque');
+
+        function validarAdmin() {
+            const senha = prompt("Ação Restrita. Digite a senha de administrador para prosseguir:");
+            if (senha === SENHA_ADMIN) return true;
+            alert("Senha incorreta. Ação cancelada.");
+            return false;
+        }
+
+        function getNomeExibicao(nomeOriginal) {
+            return (nomeOriginal === 'GuilhermeCardoso') ? 'TI Admin' : nomeOriginal;
+        }
+
+        function alternarModo() {
+            modoRegistro = !modoRegistro;
+            document.getElementById('login-titulo').innerText = modoRegistro ? 'CRIAR CONTA' : 'ENTRAR NO SISTEMA';
+            document.getElementById('btn-principal').innerText = modoRegistro ? 'Cadastrar' : 'Entrar';
+            document.getElementById('btn-alternar').innerText = modoRegistro ? 'Entrar agora' : 'Cadastrar-se';
+            document.getElementById('texto-alternar').innerText = modoRegistro ? 'Já tem conta?' : 'Não tem uma conta?';
+            document.getElementById('campo-usuario').classList.toggle('hidden');
+            document.getElementById('campo-senha').classList.toggle('hidden', modoRegistro);
+        }
+
+        async function autenticar() {
+            const email = document.getElementById('auth-email').value;
+            
+            if (modoRegistro) {
+                const nome = document.getElementById('reg-nome').value;
+                if (!nome || !email) return alert("Preencha todos os campos.");
+                
+                const { data, error } = await _supabase
+                    .from('usuarios')
+                    .insert([{ nome_usuario: nome, email: email }])
+                    .select('senha')
+                    .single();
+                
+                if (error) {
+                    alert("Erro: Este e-mail já pode estar cadastrado.");
+                } else {
+                    alert(`CADASTRO REALIZADO!\n\nSua senha numérica de 8 dígitos é: ${data.senha}\n\nGuarde-a para entrar no sistema.`);
+                    alternarModo();
+                }
+            } else {
+                const senha = document.getElementById('auth-senha').value;
+                const { data, error } = await _supabase.from('usuarios').select('*').eq('email', email).eq('senha', senha).single();
+                
+                if (data) {
+                    usuarioLogado = data;
+                    document.getElementById('tela-login').classList.add('hidden');
+                    document.getElementById('app').classList.remove('hidden');
+                    document.getElementById('user-display').innerText = `Usuário: ${getNomeExibicao(data.nome_usuario)}`;
+                    mudarAba('estoque');
+                } else {
+                    alert("E-mail ou senha incorretos.");
+                }
+            }
+        }
+
+        async function alterarQtd(id, valor, atual) {
+            if (!validarAdmin()) return; 
+            const nova = atual + valor;
+            if(nova < 0) return;
+            await _supabase.from('itens').update({ quantidade: nova }).eq('id', id);
+            await _supabase.from('movimentacoes').insert([{ item_id: id, quantidade_alterada: valor }]);
+            carregarEstoque();
+        }
+
+        async function processarBaixaComObs(id, qtdAtual) {
+            if (!validarAdmin()) return; 
+            const qtdRetirar = prompt("Quantos itens deseja retirar?");
+            if (!qtdRetirar || isNaN(qtdRetirar)) return;
+            const numRetirar = parseInt(qtdRetirar);
+            if (numRetirar > qtdAtual) return alert("Saldo insuficiente.");
+            const motivo = prompt("Motivo da retirada:");
+            if (!motivo) return;
+            
+            const autor = getNomeExibicao(usuarioLogado.nome_usuario);
+            
+            await _supabase.from('itens').update({ quantidade: qtdAtual - numRetirar }).eq('id', id);
+            await _supabase.from('movimentacoes').insert([{ item_id: id, quantidade_alterada: -numRetirar }]);
+            await _supabase.from('observacoes').insert([{ 
+                item_id: id, 
+                descricao: `[Baixa por ${autor}] Retirada de ${numRetirar}. Motivo: ${motivo}` 
+            }]);
+            carregarEstoque();
+        }
+
+        async function criarCategoria() {
+            if (!validarAdmin()) return; 
+            const n = prompt("Nome da Categoria:");
+            if(n) await _supabase.from('categorias').insert([{ nome: n }]);
+        }
+
+        async function criarItem() {
+            if (!validarAdmin()) return; 
+            const { data: cats } = await _supabase.from('categorias').select('*').order('nome');
+            if(!cats || cats.length === 0) return alert("Crie uma categoria primeiro!");
+            const msg = cats.map((c, i) => `${i}) ${c.nome}`).join('\n');
+            const escolha = prompt("Selecione a categoria:\n\n" + msg);
+            if(escolha !== null && cats[escolha]) {
+                const nome = prompt("Nome do Item:");
+                if(nome) {
+                    await _supabase.from('itens').insert([{ nome, categoria_id: cats[escolha].id, quantidade: 0 }]);
+                    carregarEstoque();
+                }
+            }
+        }
+
+        async function deletarItem(id) {
+            if (!validarAdmin()) return; 
+            if(confirm("Excluir item e todo o histórico?")) { 
+                await _supabase.from('itens').delete().eq('id', id); 
+                carregarEstoque(); 
+            }
+        }
+
+        async function removerMovimentacoes() {
+            if (!validarAdmin()) return; 
+            const ids = Array.from(document.querySelectorAll('.chk-mov:checked')).map(i => i.value);
+            if(ids.length > 0 && confirm("Remover registros selecionados?")) { 
+                await _supabase.from('movimentacoes').delete().in('id', ids); 
+                carregarRelatorio(); 
+            }
+        }
+
+        function mudarAba(nome) {
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
+            document.getElementById(`aba-${nome}`).classList.remove('hidden');
+            document.getElementById(`btn-${nome}`).classList.add('aba-ativa');
+            if(nome === 'estoque') carregarEstoque();
+            if(nome === 'relatorio') carregarRelatorio();
+            if(nome === 'obs') carregarObservacoes();
+        }
+
+        async function carregarEstoque() {
+            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
+            const container = document.getElementById('lista-estoque');
+            if(!itens || itens.length === 0) {
+                container.innerHTML = "<p class='text-center text-gray-400 py-10 italic'>Estoque vazio.</p>";
+                return;
+            }
+            container.innerHTML = itens.map(item => `
+                <div class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border-l-4 ${item.quantidade <= 0 ? 'border-red-500' : 'border-blue-500'}">
+                    <div class="flex-1">
+                        <p class="font-bold text-gray-800 leading-tight">${item.nome} ${item.quantidade <= 0 ? '<span class="esgotado ml-2 text-[10px]">ESGOTADO</span>' : ''}</p>
+                        <button onclick="processarBaixaComObs('${item.id}', ${item.quantidade})" class="text-[10px] text-blue-500 font-bold hover:underline mt-1 uppercase">Retirar com Obs</button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="alterarQtd('${item.id}', -1, ${item.quantidade})" class="w-8 h-8 rounded-lg bg-red-50 text-red-600 font-bold hover:bg-red-100">-</button>
+                        <span class="w-6 text-center font-mono font-bold text-lg">${item.quantidade}</span>
+                        <button onclick="alterarQtd('${item.id}', 1, ${item.quantidade})" class="w-8 h-8 rounded-lg bg-green-50 text-green-600 font-bold hover:bg-green-100">+</button>
+                        <button onclick="deletarItem('${item.id}')" class="ml-2 text-gray-300 hover:text-red-500 transition">×</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function carregarObservacoes() {
+            const { data } = await _supabase.from('observacoes').select('*, itens(nome)').order('data_criacao', {ascending: false});
+            const container = document.getElementById('lista-obs');
+            container.innerHTML = data.map(o => `
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-400">
+                    <div class="flex justify-between items-start mb-1 text-[10px]">
+                        <span class="font-bold text-blue-600 uppercase italic">${o.itens?.nome || 'Item'}</span>
+                        <span class="text-gray-400">${new Date(o.data_criacao).toLocaleString('pt-BR')}</span>
+                    </div>
+                    <p class="text-sm text-gray-700 leading-relaxed italic">"${o.descricao}"</p>
+                </div>
+            `).join('');
+        }
+
+        function carregarRelatorio() {
+            const agora = new Date();
+            const mesAtual = agora.getMonth();
+            const divMeses = document.getElementById('filtro-meses');
+            divMeses.innerHTML = "";
+            for(let i = 0; i <= mesAtual; i++) {
+                divMeses.innerHTML += `<button onclick="filtrarRelatorio(${i})" class="whitespace-nowrap px-4 py-1.5 rounded-full bg-white border border-gray-100 text-xs shadow-sm hover:bg-blue-600 hover:text-white transition">${nomesMeses[i]}</button>`;
+            }
+            filtrarRelatorio(mesAtual);
+        }
+
+        async function filtrarRelatorio(mes) {
+            const ano = document.getElementById('ano-label').innerText;
+            const inicio = new Date(ano, mes, 1).toISOString();
+            const fim = new Date(ano, mes + 1, 0, 23, 59, 59).toISOString();
+            const { data } = await _supabase.from('movimentacoes').select('*, itens(nome)').gte('data_movimentacao', inicio).lte('data_movimentacao', fim).order('data_movimentacao', {ascending: false});
+            const tabela = document.getElementById('tabela-relatorio');
+            tabela.innerHTML = `<h4 class="text-[10px] font-bold uppercase text-gray-400 mb-2">Movimentações</h4>` + data.map(m => `
+                <div class="flex items-center gap-3 py-2 border-b border-gray-50">
+                    <input type="checkbox" class="chk-mov w-4 h-4" value="${m.id}">
+                    <div class="flex-1">
+                        <span class="font-bold text-gray-700">${m.itens?.nome || 'Item Excluído'}</span>
+                        <p class="text-[9px] text-gray-400">${new Date(m.data_movimentacao).toLocaleString('pt-BR')}</p>
+                    </div>
+                    <span class="px-2 py-1 rounded text-xs font-black ${m.quantidade_alterada > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}">${m.quantidade_alterada > 0 ? '+' : ''}${m.quantidade_alterada}</span>
+                </div>
+            `).join('');
+        }
+
+        async function abrirListagem() {
+            const a = prompt("Qual ano?", 2026);
+            const m = prompt("Qual mês? (1-12)");
+            if(a && m) {
+                document.getElementById('ano-label').innerText = a;
+                const { data: itens } = await _supabase.from('itens').select('*').order('nome');
+                document.getElementById('tabela-relatorio').innerHTML = `<div class="bg-blue-50 p-3 rounded-lg mb-4 text-[10px] font-black uppercase">Inventário Geral - ${nomesMeses[m-1]}/${a}</div>` + 
+                    itens.map(item => `<div class="flex justify-between p-2 border-b border-gray-50 text-sm"><span>${item.nome}</span><span class="font-bold text-blue-600">${item.quantidade} un</span></div>`).join('') + 
+                    `<button onclick="filtrarRelatorio(${m-1})" class="w-full mt-4 text-[10px] text-gray-400 underline uppercase">Voltar</button>`;
+            }
+        }
+    </script>
+</body>
+</html>
