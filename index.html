@@ -12,6 +12,8 @@
         .card-clicavel:active { transform: scale(0.96); background-color: #f3f4f6; }
         .modal-blur { backdrop-filter: blur(8px); }
         .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+        /* Estilização para o player de áudio ficar discreto */
+        audio::-webkit-media-controls-enclosure { background-color: #f1f5f9; border-radius: 20px; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen pb-20">
@@ -96,9 +98,13 @@
                     </div>
                 </div>
                 <div id="chat-mensagens" class="flex-1 overflow-y-auto p-4 space-y-3 bg-chat bg-gray-100"></div>
-                <div class="p-4 border-t flex gap-2 bg-white">
+                
+                <div class="p-4 border-t flex gap-2 bg-white items-center">
+                    <button id="btn-audio" onmousedown="iniciarGravacao()" onmouseup="pararGravacao()" onmouseleave="pararGravacao()" class="bg-gray-100 text-gray-500 w-12 h-12 rounded-full flex items-center justify-center transition active:bg-red-100 active:text-red-600 shadow-sm">
+                        <span id="mic-icon" class="text-lg">🎤</span>
+                    </button>
                     <input type="text" id="input-msg" placeholder="Digite uma mensagem..." class="flex-1 bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm outline-none">
-                    <button onclick="enviarMensagem()" class="bg-blue-600 text-white px-5 rounded-2xl font-black">❯</button>
+                    <button onclick="enviarMensagem()" class="bg-blue-600 text-white w-12 h-12 rounded-full font-black flex items-center justify-center shadow-md">❯</button>
                 </div>
             </div>
         </section>
@@ -108,7 +114,6 @@
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Ano Atual: <span id="ano-atual-label"></span></h2>
                 </div>
-                
                 <div onclick="toggleRelatorioMes()" class="bg-gray-50 p-5 rounded-2xl card-clicavel flex justify-between items-center border border-gray-100">
                     <div>
                         <p id="mes-atual-label" class="font-black text-gray-800 uppercase text-sm"></p>
@@ -116,10 +121,8 @@
                     </div>
                     <span id="seta-mes" class="text-gray-300 transition-transform">▼</span>
                 </div>
-
                 <div id="lista-itens-mes" class="mt-4 space-y-3 hidden">
-                    <div id="container-entradas" class="space-y-2">
-                        </div>
+                    <div id="container-entradas" class="space-y-2"></div>
                 </div>
             </div>
         </section>
@@ -139,17 +142,54 @@
         let todosOsItens = [];
         let contatoAtivo = null;
         let usuariosOnline = {};
+        let mediaRecorder;
+        let audioChunks = [];
         const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
         window.onload = () => {
             const salvo = localStorage.getItem('usuario_estoque');
             if (salvo) { usuarioAtual = JSON.parse(salvo); abrirApp(); }
-            
             const agora = new Date();
             document.getElementById('ano-atual-label').innerText = agora.getFullYear();
             document.getElementById('mes-atual-label').innerText = nomesMeses[agora.getMonth()];
         };
 
+        // --- FUNÇÕES DE ÁUDIO ---
+        async function iniciarGravacao() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = async () => {
+                        const base64Audio = reader.result;
+                        await _supabase.from('mensagens_chat').insert([{ 
+                            remetente: usuarioAtual.nome_usuario, 
+                            destinatario: contatoAtivo, 
+                            texto: "AUDIO_BASE64:" + base64Audio 
+                        }]);
+                    };
+                };
+                mediaRecorder.start();
+                document.getElementById('mic-icon').innerText = "🔴";
+                document.getElementById('input-msg').placeholder = "Gravando...";
+            } catch (err) { alert("Microfone não autorizado."); }
+        }
+
+        function pararGravacao() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+                document.getElementById('mic-icon').innerText = "🎤";
+                document.getElementById('input-msg').placeholder = "Digite uma mensagem...";
+            }
+        }
+
+        // --- SISTEMA BASE ---
         function mudarAba(aba) {
             document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
             document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
@@ -158,21 +198,13 @@
             if(aba === 'relatorios') carregarRelatorios();
         }
 
-        // LÓGICA DE RELATÓRIOS: MOSTRAR TUDO QUE ESTÁ NO ESTOQUE NO MÊS
         async function carregarRelatorios() {
-            // Busca todos os itens cadastrados no sistema
-            const { data: itens, error } = await _supabase
-                .from('itens')
-                .select('*')
-                .order('nome');
-
+            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
             const container = document.getElementById('container-entradas');
-            
             if (!itens || itens.length === 0) {
                 container.innerHTML = `<p class="text-[10px] text-gray-400 text-center py-4 uppercase font-bold">Nenhum item cadastrado.</p>`;
                 return;
             }
-
             container.innerHTML = itens.map(i => `
                 <div class="flex justify-between items-center p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
                     <div>
@@ -190,17 +222,10 @@
         function toggleRelatorioMes() {
             const lista = document.getElementById('lista-itens-mes');
             const seta = document.getElementById('seta-mes');
-            const estaEscondido = lista.classList.contains('hidden');
-            if (estaEscondido) {
-                lista.classList.remove('hidden');
-                seta.style.transform = "rotate(180deg)";
-            } else {
-                lista.classList.add('hidden');
-                seta.style.transform = "rotate(0deg)";
-            }
+            lista.classList.toggle('hidden');
+            seta.style.transform = lista.classList.contains('hidden') ? "rotate(0deg)" : "rotate(180deg)";
         }
 
-        // --- SISTEMA BASE ---
         function configurarRealtime() {
             const canalPresenca = _supabase.channel('online-users');
             canalPresenca.on('presence', { event: 'sync' }, () => {
@@ -312,7 +337,6 @@
             }
         }
 
-        // CHAT
         function renderizarContatos() {
             const contatos = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
             document.getElementById('contatos-container').innerHTML = contatos.map(c => `
@@ -350,7 +374,16 @@
         async function carregarHistoricoChat() {
             const { data } = await _supabase.from('mensagens_chat').select('*').or(`and(remetente.eq.${usuarioAtual.nome_usuario},destinatario.eq.${contatoAtivo}),and(remetente.eq.${contatoAtivo},destinatario.eq.${usuarioAtual.nome_usuario})`).order('criado_em');
             const c = document.getElementById('chat-mensagens');
-            c.innerHTML = data.map(m => `<div class="flex ${m.remetente === usuarioAtual.nome_usuario ? 'justify-end' : 'justify-start'}"><div class="px-4 py-2 rounded-2xl text-sm ${m.remetente === usuarioAtual.nome_usuario ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm">${m.texto}</div></div>`).join('');
+            
+            c.innerHTML = data.map(m => {
+                const souEu = m.remetente === usuarioAtual.nome_usuario;
+                let conteudo;
+                if (m.texto.startsWith("AUDIO_BASE64:")) {
+                    conteudo = `<audio src="${m.texto.replace("AUDIO_BASE64:", "")}" controls class="max-w-[180px] h-8"></audio>`;
+                } else { conteudo = m.texto; }
+
+                return `<div class="flex ${souEu ? 'justify-end' : 'justify-start'}"><div class="px-4 py-2 rounded-2xl text-sm ${souEu ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm">${conteudo}</div></div>`;
+            }).join('');
             c.scrollTop = c.scrollHeight;
         }
 
