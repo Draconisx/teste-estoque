@@ -12,8 +12,8 @@
         .card-clicavel:active { transform: scale(0.96); background-color: #f3f4f6; }
         .modal-blur { backdrop-filter: blur(8px); }
         .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
-        /* Estilização para o player de áudio ficar discreto */
         audio::-webkit-media-controls-enclosure { background-color: #f1f5f9; border-radius: 20px; }
+        .msg-bubble { user-select: none; -webkit-user-select: none; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen pb-20">
@@ -100,7 +100,7 @@
                 <div id="chat-mensagens" class="flex-1 overflow-y-auto p-4 space-y-3 bg-chat bg-gray-100"></div>
                 
                 <div class="p-4 border-t flex gap-2 bg-white items-center">
-                    <button id="btn-audio" onmousedown="iniciarGravacao()" onmouseup="pararGravacao()" onmouseleave="pararGravacao()" class="bg-gray-100 text-gray-500 w-12 h-12 rounded-full flex items-center justify-center transition active:bg-red-100 active:text-red-600 shadow-sm">
+                    <button id="btn-audio" onmousedown="iniciarGravacao()" onmouseup="pararGravacao()" onmouseleave="pararGravacao()" ontouchstart="iniciarGravacao()" ontouchend="pararGravacao()" class="bg-gray-100 text-gray-500 w-12 h-12 rounded-full flex items-center justify-center transition active:bg-red-100 active:text-red-600 shadow-sm">
                         <span id="mic-icon" class="text-lg">🎤</span>
                     </button>
                     <input type="text" id="input-msg" placeholder="Digite uma mensagem..." class="flex-1 bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm outline-none">
@@ -144,6 +144,7 @@
         let usuariosOnline = {};
         let mediaRecorder;
         let audioChunks = [];
+        let pressTimer;
         const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
         window.onload = () => {
@@ -153,6 +154,19 @@
             document.getElementById('ano-atual-label').innerText = agora.getFullYear();
             document.getElementById('mes-atual-label').innerText = nomesMeses[agora.getMonth()];
         };
+
+        // --- EXCLUSÃO ESTILO WHATSAPP ---
+        function iniciarPressExcluir(msgId, remetente) {
+            if (remetente !== usuarioAtual.nome_usuario) return;
+            pressTimer = window.setTimeout(async () => {
+                if (confirm("Apagar mensagem para todos?")) {
+                    const { error } = await _supabase.from('mensagens_chat').delete().eq('id', msgId);
+                    if (error) alert("Erro ao deletar");
+                }
+            }, 600);
+        }
+
+        function cancelarPressExcluir() { clearTimeout(pressTimer); }
 
         // --- FUNÇÕES DE ÁUDIO ---
         async function iniciarGravacao() {
@@ -189,7 +203,7 @@
             }
         }
 
-        // --- SISTEMA BASE ---
+        // --- SISTEMA ---
         function mudarAba(aba) {
             document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
             document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
@@ -237,8 +251,9 @@
                 if (status === 'SUBSCRIBED') await canalPresenca.track({ user: usuarioAtual.nome_usuario });
             });
 
-            _supabase.channel('mensagens-db').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensagens_chat' }, payload => {
-                if (contatoAtivo && (payload.new.remetente === contatoAtivo || payload.new.remetente === usuarioAtual.nome_usuario)) carregarHistoricoChat();
+            // CORREÇÃO AQUI: Escuta INSERT e DELETE para atualizar o chat
+            _supabase.channel('mensagens-db').on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens_chat' }, payload => {
+                if (contatoAtivo) carregarHistoricoChat();
             }).subscribe();
         }
 
@@ -372,17 +387,29 @@
         }
 
         async function carregarHistoricoChat() {
-            const { data } = await _supabase.from('mensagens_chat').select('*').or(`and(remetente.eq.${usuarioAtual.nome_usuario},destinatario.eq.${contatoAtivo}),and(remetente.eq.${contatoAtivo},destinatario.eq.${usuarioAtual.nome_usuario})`).order('criado_em');
+            const { data } = await _supabase.from('mensagens_chat')
+                .select('*')
+                .or(`and(remetente.eq.${usuarioAtual.nome_usuario},destinatario.eq.${contatoAtivo}),and(remetente.eq.${contatoAtivo},destinatario.eq.${usuarioAtual.nome_usuario})`)
+                .order('criado_em');
+                
             const c = document.getElementById('chat-mensagens');
-            
             c.innerHTML = data.map(m => {
                 const souEu = m.remetente === usuarioAtual.nome_usuario;
-                let conteudo;
-                if (m.texto.startsWith("AUDIO_BASE64:")) {
-                    conteudo = `<audio src="${m.texto.replace("AUDIO_BASE64:", "")}" controls class="max-w-[180px] h-8"></audio>`;
-                } else { conteudo = m.texto; }
+                let conteudo = m.texto.startsWith("AUDIO_BASE64:") 
+                    ? `<audio src="${m.texto.replace("AUDIO_BASE64:", "")}" controls class="max-w-[180px] h-8"></audio>`
+                    : m.texto;
 
-                return `<div class="flex ${souEu ? 'justify-end' : 'justify-start'}"><div class="px-4 py-2 rounded-2xl text-sm ${souEu ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm">${conteudo}</div></div>`;
+                return `
+                    <div class="flex ${souEu ? 'justify-end' : 'justify-start'}">
+                        <div onmousedown="iniciarPressExcluir(${m.id}, '${m.remetente}')" 
+                             onmouseup="cancelarPressExcluir()" 
+                             onmouseleave="cancelarPressExcluir()" 
+                             ontouchstart="iniciarPressExcluir(${m.id}, '${m.remetente}')" 
+                             ontouchend="cancelarPressExcluir()"
+                             class="msg-bubble px-4 py-2 rounded-2xl text-sm ${souEu ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm transition active:scale-95">
+                            ${conteudo}
+                        </div>
+                    </div>`;
             }).join('');
             c.scrollTop = c.scrollHeight;
         }
