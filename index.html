@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estoque Master - Chat & Relatórios</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
+        .card-clicavel { cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+        .card-clicavel:active { transform: scale(0.96); background-color: #f3f4f6; }
+        .modal-blur { backdrop-filter: blur(8px); }
+        .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20">
+
+    <div id="modal-uso" class="fixed inset-0 bg-black/60 z-[60] hidden flex items-center justify-center p-4 modal-blur">
+        <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="modal-titulo" class="font-black text-gray-800 uppercase tracking-tighter text-sm">Relatar Uso</h3>
+                <button onclick="fecharModal()" class="text-gray-300 text-xl">✕</button>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Descrição</label>
+                    <input type="text" id="input-obs" placeholder="Motivo da retirada" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quantidade</label>
+                    <input type="number" id="input-qtd" value="1" min="1" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-2xl font-black">
+                    <p id="info-estoque" class="text-[10px] text-blue-600 font-bold mt-2 uppercase"></p>
+                </div>
+                <button id="btn-confirmar-uso" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition">CONFIRMAR BAIXA</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tela-login" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-10">
+            <h2 class="text-2xl font-black text-center text-gray-800 mb-8 uppercase tracking-tighter">Acesso Estoque</h2>
+            <div class="space-y-4">
+                <input type="text" id="auth-identificador" placeholder="Usuário" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
+                <input type="password" id="auth-senha" placeholder="Senha" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
+                <button onclick="autenticar()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl mt-4 shadow-lg active:scale-95 transition">ENTRAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="max-w-2xl mx-auto p-4 hidden">
+        <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 sticky top-2 z-10 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-xl font-black text-gray-800 tracking-tight">MEU ESTOQUE</h1>
+                    <span id="user-display" class="text-[10px] text-blue-500 font-black uppercase"></span>
+                </div>
+                <button onclick="sair()" class="text-[10px] font-black bg-red-50 text-red-500 px-4 py-2 rounded-xl uppercase">Sair</button>
+            </div>
+            
+            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 tracking-widest uppercase">
+                <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
+                <button id="btn-chat" onclick="mudarAba('chat')">Chat</button>
+                <button id="btn-relatorios" onclick="mudarAba('relatorios')">Relatórios</button>
+                <button id="btn-obs" onclick="mudarAba('obs')" class="text-red-500 hidden">⚠️ Alertas</button>
+            </nav>
+        </header>
+
+        <section id="aba-estoque" class="aba">
+            <div class="relative mb-4">
+                <input type="search" id="input-busca" oninput="filtrarItens()" placeholder="Buscar item..." class="w-full bg-gray-100 border-none rounded-xl py-3 pl-10 text-sm outline-none">
+                <span class="absolute left-3 top-3.5 opacity-30">🔍</span>
+            </div>
+            <div class="flex gap-2 mb-4">
+                <button onclick="criarCategoria()" class="flex-1 bg-white border border-gray-200 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">+ Categoria</button>
+                <button onclick="criarItem()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg">+ Novo Item</button>
+            </div>
+            <div id="lista-estoque" class="space-y-4"></div>
+        </section>
+
+        <section id="aba-chat" class="aba hidden">
+            <div id="lista-contatos" class="space-y-2">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Conversas</h2>
+                    <button onclick="adicionarContato()" class="bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full font-black uppercase">+ Adicionar</button>
+                </div>
+                <div id="contatos-container" class="space-y-2"></div>
+            </div>
+
+            <div id="janela-conversa" class="fixed inset-0 bg-white z-[70] hidden flex flex-col">
+                <div class="p-4 border-b flex items-center bg-gray-50">
+                    <button onclick="fecharChat()" class="mr-4 text-gray-400 text-xl">←</button>
+                    <div>
+                        <p id="chat-nome-destino" class="font-black text-gray-800 uppercase text-sm"></p>
+                        <p id="chat-status-destino" class="text-[9px] font-bold uppercase"></p>
+                    </div>
+                </div>
+                <div id="chat-mensagens" class="flex-1 overflow-y-auto p-4 space-y-3 bg-chat bg-gray-100"></div>
+                <div class="p-4 border-t flex gap-2 bg-white">
+                    <input type="text" id="input-msg" placeholder="Digite uma mensagem..." class="flex-1 bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm outline-none">
+                    <button onclick="enviarMensagem()" class="bg-blue-600 text-white px-5 rounded-2xl font-black">❯</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="aba-relatorios" class="aba hidden">
+            <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm mb-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Ano Atual: <span id="ano-atual-label"></span></h2>
+                </div>
+                
+                <div onclick="toggleRelatorioMes()" class="bg-gray-50 p-5 rounded-2xl card-clicavel flex justify-between items-center border border-gray-100">
+                    <div>
+                        <p id="mes-atual-label" class="font-black text-gray-800 uppercase text-sm"></p>
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Inventário do Período</p>
+                    </div>
+                    <span id="seta-mes" class="text-gray-300 transition-transform">▼</span>
+                </div>
+
+                <div id="lista-itens-mes" class="mt-4 space-y-3 hidden">
+                    <div id="container-entradas" class="space-y-2">
+                        </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="aba-obs" class="aba hidden">
+            <div id="lista-obs" class="space-y-3"></div>
+        </section>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const SENHA_ADMIN = "eta2026estoque";
+        
+        let usuarioAtual = null;
+        let todosOsItens = [];
+        let contatoAtivo = null;
+        let usuariosOnline = {};
+        const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+        window.onload = () => {
+            const salvo = localStorage.getItem('usuario_estoque');
+            if (salvo) { usuarioAtual = JSON.parse(salvo); abrirApp(); }
+            
+            const agora = new Date();
+            document.getElementById('ano-atual-label').innerText = agora.getFullYear();
+            document.getElementById('mes-atual-label').innerText = nomesMeses[agora.getMonth()];
+        };
+
+        function mudarAba(aba) {
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
+            document.getElementById(`aba-${aba}`).classList.remove('hidden');
+            document.getElementById(`btn-${aba}`).classList.add('aba-ativa');
+            if(aba === 'relatorios') carregarRelatorios();
+        }
+
+        // LÓGICA DE RELATÓRIOS: MOSTRAR TUDO QUE ESTÁ NO ESTOQUE NO MÊS
+        async function carregarRelatorios() {
+            // Busca todos os itens cadastrados no sistema
+            const { data: itens, error } = await _supabase
+                .from('itens')
+                .select('*')
+                .order('nome');
+
+            const container = document.getElementById('container-entradas');
+            
+            if (!itens || itens.length === 0) {
+                container.innerHTML = `<p class="text-[10px] text-gray-400 text-center py-4 uppercase font-bold">Nenhum item cadastrado.</p>`;
+                return;
+            }
+
+            container.innerHTML = itens.map(i => `
+                <div class="flex justify-between items-center p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
+                    <div>
+                        <p class="font-bold text-gray-800 text-xs uppercase">${i.nome}</p>
+                        <p class="text-[9px] text-blue-500 font-black uppercase">Status: Ativo</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] font-black text-gray-400 block uppercase">Quantidade</span>
+                        <span class="text-sm font-black text-gray-800">${i.quantidade}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleRelatorioMes() {
+            const lista = document.getElementById('lista-itens-mes');
+            const seta = document.getElementById('seta-mes');
+            const estaEscondido = lista.classList.contains('hidden');
+            if (estaEscondido) {
+                lista.classList.remove('hidden');
+                seta.style.transform = "rotate(180deg)";
+            } else {
+                lista.classList.add('hidden');
+                seta.style.transform = "rotate(0deg)";
+            }
+        }
+
+        // --- SISTEMA BASE ---
+        function configurarRealtime() {
+            const canalPresenca = _supabase.channel('online-users');
+            canalPresenca.on('presence', { event: 'sync' }, () => {
+                const state = canalPresenca.presenceState();
+                usuariosOnline = {};
+                Object.keys(state).forEach(id => { usuariosOnline[state[id][0].user] = true; });
+                renderizarContatos();
+            }).subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') await canalPresenca.track({ user: usuarioAtual.nome_usuario });
+            });
+
+            _supabase.channel('mensagens-db').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensagens_chat' }, payload => {
+                if (contatoAtivo && (payload.new.remetente === contatoAtivo || payload.new.remetente === usuarioAtual.nome_usuario)) carregarHistoricoChat();
+            }).subscribe();
+        }
+
+        async function autenticar() {
+            const iden = document.getElementById('auth-identificador').value.trim();
+            const senha = document.getElementById('auth-senha').value.trim();
+            let userResult = (iden === 'admin' && senha === SENHA_ADMIN) ? { nome_usuario: 'ADMIN' } : null;
+            if(!userResult) {
+                const { data } = await _supabase.from('usuarios').select('*').or(`email.eq.${iden.toLowerCase()},nome_usuario.eq.${iden}`).eq('senha', senha).maybeSingle();
+                userResult = data;
+            }
+            if (userResult) {
+                usuarioAtual = userResult;
+                localStorage.setItem('usuario_estoque', JSON.stringify(userResult));
+                abrirApp();
+            } else alert("Erro de acesso.");
+        }
+
+        function abrirApp() {
+            document.getElementById('tela-login').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            document.getElementById('user-display').innerText = usuarioAtual.nome_usuario;
+            configurarRealtime(); carregarEstoque(); verificarObservacoes(); renderizarContatos();
+        }
+
+        function sair() { localStorage.removeItem('usuario_estoque'); location.reload(); }
+
+        async function carregarEstoque() {
+            const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome');
+            todosOsItens = data || [];
+            renderizarItens(todosOsItens);
+        }
+
+        function renderizarItens(itens) {
+            const lista = document.getElementById('lista-estoque');
+            const categorias = {};
+            itens.forEach(i => {
+                const cat = i.categorias?.nome || "GERAL";
+                if (!categorias[cat]) categorias[cat] = [];
+                categorias[cat].push(i);
+            });
+            lista.innerHTML = Object.keys(categorias).map(cat => `
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                    <div class="bg-gray-50 px-5 py-2 text-[9px] font-black text-gray-400 uppercase border-b tracking-widest">${cat}</div>
+                    ${categorias[cat].map(item => `
+                        <div onclick='abrirModalUso(${JSON.stringify(item)})' class="p-5 border-b last:border-0 card-clicavel flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-gray-800 text-sm">${item.nome} ${item.observacao ? '⚠️' : ''}</p>
+                                <p class="text-[11px] font-black text-blue-500 uppercase">Qtd: ${item.quantidade}</p>
+                            </div>
+                            <span class="text-[9px] font-black text-gray-300 uppercase">Baixa</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+        }
+
+        function filtrarItens() {
+            const termo = document.getElementById('input-busca').value.toLowerCase();
+            renderizarItens(todosOsItens.filter(i => i.nome.toLowerCase().includes(termo)));
+        }
+
+        function abrirModalUso(item) {
+            document.getElementById('modal-titulo').innerText = item.nome;
+            document.getElementById('info-estoque').innerText = `Estoque: ${item.quantidade}`;
+            document.getElementById('modal-uso').classList.remove('hidden');
+            document.getElementById('btn-confirmar-uso').onclick = async () => {
+                const obs = document.getElementById('input-obs').value.trim();
+                const qtd = parseInt(document.getElementById('input-qtd').value);
+                if (!obs || isNaN(qtd) || qtd <= 0 || qtd > item.quantidade) return alert("Erro nos dados.");
+                await _supabase.from('itens').update({ quantidade: item.quantidade - qtd, observacao: obs, qtd_obs: qtd }).eq('id', item.id);
+                await _supabase.from('movimentacoes').insert([{ item_id: item.id, quantidade_alterada: -qtd, usuario_nome: usuarioAtual.nome_usuario }]);
+                fecharModal(); carregarEstoque(); verificarObservacoes();
+            };
+        }
+
+        function fecharModal() { document.getElementById('modal-uso').classList.add('hidden'); }
+
+        async function criarCategoria() {
+            const p = prompt("Senha Admin:"); if (p !== SENHA_ADMIN) return;
+            const nome = prompt("Nome da Categoria:");
+            if (nome) { await _supabase.from('categorias').insert([{ nome: nome.toUpperCase() }]); carregarEstoque(); }
+        }
+
+        async function criarItem() {
+            const p = prompt("Senha Admin:"); if (p !== SENHA_ADMIN) return;
+            const { data: cats } = await _supabase.from('categorias').select('*');
+            const catStr = cats.map((c, i) => `${i}) ${c.nome}`).join('\n');
+            const idx = prompt("Número da categoria:\n" + catStr);
+            const nome = prompt("Nome do Item:");
+            const qtd = parseInt(prompt("Quantidade:", 0));
+            if (nome && cats[idx]) {
+                const { data: novoItem } = await _supabase.from('itens').insert([{ nome, categoria_id: cats[idx].id, quantidade: qtd }]).select().single();
+                if(qtd > 0) await _supabase.from('movimentacoes').insert([{ item_id: novoItem.id, quantidade_alterada: qtd, usuario_nome: usuarioAtual.nome_usuario }]);
+                carregarEstoque();
+            }
+        }
+
+        // CHAT
+        function renderizarContatos() {
+            const contatos = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
+            document.getElementById('contatos-container').innerHTML = contatos.map(c => `
+                <div onclick="abrirConversa('${c}')" class="bg-white p-4 rounded-2xl border flex items-center gap-3 card-clicavel">
+                    <div class="w-2 h-2 rounded-full ${usuariosOnline[c] ? 'bg-green-500' : 'bg-gray-300'}"></div>
+                    <span class="font-bold text-gray-800 text-xs flex-1 uppercase">${c}</span>
+                </div>
+            `).join('');
+        }
+
+        function adicionarContato() {
+            const n = prompt("Nome de usuário:");
+            if(!n) return;
+            const k = `contatos_${usuarioAtual.nome_usuario}`;
+            const c = JSON.parse(localStorage.getItem(k) || "[]");
+            if(!c.includes(n)) { c.push(n); localStorage.setItem(k, JSON.stringify(c)); renderizarContatos(); }
+        }
+
+        async function abrirConversa(n) { 
+            contatoAtivo = n; 
+            document.getElementById('chat-nome-destino').innerText = n;
+            document.getElementById('janela-conversa').classList.remove('hidden');
+            carregarHistoricoChat();
+        }
+
+        function fecharChat() { contatoAtivo = null; document.getElementById('janela-conversa').classList.add('hidden'); }
+
+        async function enviarMensagem() {
+            const i = document.getElementById('input-msg');
+            if(!i.value.trim()) return;
+            await _supabase.from('mensagens_chat').insert([{ remetente: usuarioAtual.nome_usuario, destinatario: contatoAtivo, texto: i.value }]);
+            i.value = "";
+        }
+
+        async function carregarHistoricoChat() {
+            const { data } = await _supabase.from('mensagens_chat').select('*').or(`and(remetente.eq.${usuarioAtual.nome_usuario},destinatario.eq.${contatoAtivo}),and(remetente.eq.${contatoAtivo},destinatario.eq.${usuarioAtual.nome_usuario})`).order('criado_em');
+            const c = document.getElementById('chat-mensagens');
+            c.innerHTML = data.map(m => `<div class="flex ${m.remetente === usuarioAtual.nome_usuario ? 'justify-end' : 'justify-start'}"><div class="px-4 py-2 rounded-2xl text-sm ${m.remetente === usuarioAtual.nome_usuario ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm">${m.texto}</div></div>`).join('');
+            c.scrollTop = c.scrollHeight;
+        }
+
+        async function verificarObservacoes() {
+            const { data } = await _supabase.from('itens').select('*').not('observacao', 'is', null).neq('observacao', '');
+            document.getElementById('btn-obs').classList.toggle('hidden', !data?.length);
+            document.getElementById('lista-obs').innerHTML = data?.map(i => `
+                <div class="bg-white p-4 rounded-2xl border-l-4 border-red-500 shadow-sm flex justify-between items-center mb-2">
+                    <p class="text-xs font-bold uppercase">${i.nome}: <span class="font-normal normal-case italic">"${i.observacao}"</span></p>
+                    <button onclick="limparAlerta(${i.id})">✅</button>
+                </div>
+            `).join('');
+        }
+
+        async function limparAlerta(id) {
+            await _supabase.from('itens').update({ observacao: null, qtd_obs: 0 }).eq('id', id);
+            verificarObservacoes(); carregarEstoque();
+        }
+    </script>
+</body>
+</html>
