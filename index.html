@@ -13,7 +13,7 @@
         .modal-blur { backdrop-filter: blur(8px); }
         .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
         audio::-webkit-media-controls-enclosure { background-color: #f1f5f9; border-radius: 20px; }
-        .msg-bubble { user-select: none; -webkit-user-select: none; }
+        .msg-bubble { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen pb-20">
@@ -155,20 +155,20 @@
             document.getElementById('mes-atual-label').innerText = nomesMeses[agora.getMonth()];
         };
 
-        // --- EXCLUSÃO ESTILO WHATSAPP ---
+        // --- EXCLUSÃO WHATSAPP (TEXTO E ÁUDIO) ---
         function iniciarPressExcluir(msgId, remetente) {
             if (remetente !== usuarioAtual.nome_usuario) return;
             pressTimer = window.setTimeout(async () => {
                 if (confirm("Apagar mensagem para todos?")) {
                     const { error } = await _supabase.from('mensagens_chat').delete().eq('id', msgId);
-                    if (error) alert("Erro ao deletar");
+                    if (error) alert("Erro ao deletar: " + error.message);
                 }
             }, 600);
         }
 
         function cancelarPressExcluir() { clearTimeout(pressTimer); }
 
-        // --- FUNÇÕES DE ÁUDIO ---
+        // --- ÁUDIO ---
         async function iniciarGravacao() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -251,8 +251,7 @@
                 if (status === 'SUBSCRIBED') await canalPresenca.track({ user: usuarioAtual.nome_usuario });
             });
 
-            // CORREÇÃO AQUI: Escuta INSERT e DELETE para atualizar o chat
-            _supabase.channel('mensagens-db').on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens_chat' }, payload => {
+            _supabase.channel('mensagens-db').on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens_chat' }, () => {
                 if (contatoAtivo) carregarHistoricoChat();
             }).subscribe();
         }
@@ -325,7 +324,6 @@
                 const qtd = parseInt(document.getElementById('input-qtd').value);
                 if (!obs || isNaN(qtd) || qtd <= 0 || qtd > item.quantidade) return alert("Erro nos dados.");
                 await _supabase.from('itens').update({ quantidade: item.quantidade - qtd, observacao: obs, qtd_obs: qtd }).eq('id', item.id);
-                await _supabase.from('movimentacoes').insert([{ item_id: item.id, quantidade_alterada: -qtd, usuario_nome: usuarioAtual.nome_usuario }]);
                 fecharModal(); carregarEstoque(); verificarObservacoes();
             };
         }
@@ -346,8 +344,7 @@
             const nome = prompt("Nome do Item:");
             const qtd = parseInt(prompt("Quantidade:", 0));
             if (nome && cats[idx]) {
-                const { data: novoItem } = await _supabase.from('itens').insert([{ nome, categoria_id: cats[idx].id, quantidade: qtd }]).select().single();
-                if(qtd > 0) await _supabase.from('movimentacoes').insert([{ item_id: novoItem.id, quantidade_alterada: qtd, usuario_nome: usuarioAtual.nome_usuario }]);
+                await _supabase.from('itens').insert([{ nome, categoria_id: cats[idx].id, quantidade: qtd }]);
                 carregarEstoque();
             }
         }
@@ -393,9 +390,9 @@
                 .order('criado_em');
                 
             const c = document.getElementById('chat-mensagens');
-            c.innerHTML = data.map(m => {
+            c.innerHTML = data?.map(m => {
                 const souEu = m.remetente === usuarioAtual.nome_usuario;
-                let conteudo = m.texto.startsWith("AUDIO_BASE64:") 
+                const conteudo = m.texto.startsWith("AUDIO_BASE64:") 
                     ? `<audio src="${m.texto.replace("AUDIO_BASE64:", "")}" controls class="max-w-[180px] h-8"></audio>`
                     : m.texto;
 
@@ -406,11 +403,11 @@
                              onmouseleave="cancelarPressExcluir()" 
                              ontouchstart="iniciarPressExcluir(${m.id}, '${m.remetente}')" 
                              ontouchend="cancelarPressExcluir()"
-                             class="msg-bubble px-4 py-2 rounded-2xl text-sm ${souEu ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm transition active:scale-95">
+                             class="msg-bubble px-4 py-2 rounded-2xl text-sm ${souEu ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm transition active:scale-95 cursor-pointer">
                             ${conteudo}
                         </div>
                     </div>`;
-            }).join('');
+            }).join('') || '';
             c.scrollTop = c.scrollHeight;
         }
 
@@ -422,7 +419,7 @@
                     <p class="text-xs font-bold uppercase">${i.nome}: <span class="font-normal normal-case italic">"${i.observacao}"</span></p>
                     <button onclick="limparAlerta(${i.id})">✅</button>
                 </div>
-            `).join('');
+            `).join('') || '';
         }
 
         async function limparAlerta(id) {
