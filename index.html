@@ -3,386 +3,252 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estoque Master - Chat & Relatórios</title>
+    <title>Estoque Master Pro - Sistema Integrado</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
         .card-clicavel { cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
         .card-clicavel:active { transform: scale(0.96); background-color: #f3f4f6; }
         .modal-blur { backdrop-filter: blur(8px); }
-        .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
-        audio::-webkit-media-controls-enclosure { background-color: #f1f5f9; border-radius: 20px; }
-        .msg-bubble { user-select: none; -webkit-user-select: none; touch-action: manipulation; position: relative; }
-        .unread-badge { animation: pop 0.3s ease-out; }
-        @keyframes pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+        .dropdown-content { display: none; position: absolute; right: 0; top: 100%; z-index: 50; }
+        .dropdown:hover .dropdown-content { display: block; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen pb-20">
 
-    <div id="modal-uso" class="fixed inset-0 bg-black/60 z-[60] hidden flex items-center justify-center p-4 modal-blur">
+    <div id="modal-detalhe-geral" class="fixed inset-0 bg-black/60 z-[110] hidden flex items-center justify-center p-4 modal-blur">
         <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8">
+            <h3 id="detalhe-titulo" class="font-black text-gray-800 uppercase text-sm mb-4 text-blue-600"></h3>
+            <div id="detalhe-conteudo" class="space-y-4 text-sm text-gray-600 max-h-[50vh] overflow-y-auto"></div>
+            
+            <div class="mt-6 space-y-2">
+                <button onclick="document.getElementById('modal-detalhe-geral').classList.add('hidden')" class="w-full bg-gray-800 text-white font-black py-4 rounded-2xl active:scale-95 transition">FECHAR</button>
+                <button id="btn-excluir-os" class="w-full bg-red-50 text-red-500 font-black py-3 rounded-2xl text-[10px] uppercase hover:bg-red-100 transition">Excluir Ordem de Serviço</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-os" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4 modal-blur">
+        <div class="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
             <div class="flex justify-between items-center mb-6">
-                <h3 id="modal-titulo" class="font-black text-gray-800 uppercase tracking-tighter text-sm">Relatar Uso</h3>
-                <button onclick="fecharModal()" class="text-gray-300 text-xl">✕</button>
+                <h3 class="font-black text-gray-800 uppercase text-sm">Criar Ordem de Serviço</h3>
+                <button onclick="fecharModalOS()" class="text-gray-300 text-xl">✕</button>
             </div>
-            <div class="space-y-6">
-                <div>
-                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Descrição</label>
-                    <input type="text" id="input-obs" placeholder="Motivo da retirada" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quantidade</label>
-                    <input type="number" id="input-qtd" value="1" min="1" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-2xl font-black">
-                    <p id="info-estoque" class="text-[10px] text-blue-600 font-bold mt-2 uppercase"></p>
-                </div>
-                <button id="btn-confirmar-uso" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition">CONFIRMAR BAIXA</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="tela-login" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-10">
-            <h2 class="text-2xl font-black text-center text-gray-800 mb-8 uppercase tracking-tighter">Acesso Estoque</h2>
             <div class="space-y-4">
-                <input type="text" id="auth-identificador" placeholder="Usuário ou Email" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
-                <input type="password" id="auth-senha" placeholder="Senha" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
-                <button onclick="autenticar()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl mt-4 shadow-lg active:scale-95 transition">ENTRAR</button>
-                <div class="text-center mt-6">
-                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Não tem uma conta? <button onclick="alternarAutenticacao('cadastro')" class="text-blue-600 hover:underline ml-1">Cadastre-se aqui</button></p>
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="text" id="os-encanador" placeholder="Encanador" class="border-b py-2 outline-none text-sm focus:border-blue-500">
+                    <input type="text" id="os-local" placeholder="Local" class="border-b py-2 outline-none text-sm focus:border-blue-500">
                 </div>
+                <input type="datetime-local" id="os-data" class="w-full border-b py-2 outline-none text-sm text-gray-400">
+                <div class="border rounded-xl p-3 bg-gray-50">
+                    <p class="text-[10px] font-black text-gray-400 uppercase mb-2">Selecione os Materiais</p>
+                    <div id="os-lista-materiais" class="space-y-2 max-h-40 overflow-y-auto"></div>
+                </div>
+                <button onclick="salvarOS()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition">GERAR E DEBITAR</button>
             </div>
         </div>
     </div>
 
-    <div id="tela-cadastro" class="fixed inset-0 bg-gray-900 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-10">
-            <h2 class="text-2xl font-black text-center text-gray-800 mb-8 uppercase tracking-tighter">Nova Conta</h2>
-            <div class="space-y-4">
-                <input type="text" id="reg-usuario" placeholder="Nome de Usuário" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
-                <input type="email" id="reg-email" placeholder="E-mail" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
-                <input type="password" id="reg-senha" placeholder="Senha" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
-                <button onclick="registrarNovoUsuario()" class="w-full bg-green-600 text-white font-black py-4 rounded-2xl mt-4 shadow-lg active:scale-95 transition">CRIAR CONTA</button>
-                <div class="text-center mt-6">
-                    <button onclick="alternarAutenticacao('login')" class="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition">Voltar para o Login</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="app" class="max-w-2xl mx-auto p-4 hidden">
-        <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 sticky top-2 z-10 border border-gray-100">
+    <div id="app" class="max-w-2xl mx-auto p-4">
+        <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 border border-gray-100">
             <div class="flex justify-between items-center mb-4">
                 <div>
-                    <h1 class="text-xl font-black text-gray-800 tracking-tight">MEU ESTOQUE</h1>
-                    <span id="user-display" class="text-[10px] text-blue-500 font-black uppercase"></span>
+                    <h1 class="text-xl font-black text-gray-800 tracking-tighter">ESTOQUE MASTER</h1>
+                    <span class="text-[10px] text-blue-500 font-black">PAINEL DE CONTROLE</span>
                 </div>
-                <button onclick="sair()" class="text-[10px] font-black bg-red-50 text-red-500 px-4 py-2 rounded-xl uppercase">Sair</button>
+                
+                <div class="relative dropdown">
+                    <button class="bg-gray-100 p-3 rounded-xl text-gray-600 hover:bg-gray-200 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                    </button>
+                    <div class="dropdown-content pt-2 w-56">
+                        <div class="bg-white border rounded-2xl shadow-2xl p-2 space-y-1">
+                            <button onclick="criarCategoria()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 rounded-xl">📁 Nova Categoria</button>
+                            <button onclick="criarItem()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 rounded-xl">📦 Novo Produto</button>
+                            <button onclick="adicionarQuantidadeEstoque()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-green-600 hover:bg-green-50 rounded-xl">➕ Entrada de Estoque</button>
+                            <hr class="my-1">
+                            <button onclick="abrirModalOS()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50 rounded-xl">📝 Gerar O.S.</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 tracking-widest uppercase">
+
+            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 uppercase">
                 <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
-                <button id="btn-chat" onclick="mudarAba('chat')" class="relative">Chat <span id="global-unread-count" class="hidden absolute -top-1 -right-2 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center">0</span></button>
-                <button id="btn-relatorios" onclick="mudarAba('relatorios')">Relatórios</button>
-                <button id="btn-staff" onclick="mudarAba('staff')" class="hidden text-purple-600">🛡️ Staff</button>
-                <button id="btn-obs" onclick="mudarAba('obs')" class="text-red-500 hidden">⚠️ Alertas</button>
+                <button id="btn-baixas" onclick="mudarAba('baixas')">Baixas</button>
+                <button id="btn-relatorios" onclick="mudarAba('relatorios')">O.S.</button>
             </nav>
         </header>
 
         <section id="aba-estoque" class="aba">
-            <div class="relative mb-4"><input type="search" id="input-busca" oninput="filtrarItens()" placeholder="Buscar item..." class="w-full bg-gray-100 border-none rounded-xl py-3 pl-10 text-sm outline-none"><span class="absolute left-3 top-3.5 opacity-30">🔍</span></div>
-            
-            <div id="controles-admin" class="hidden flex gap-2 mb-4">
-                <button onclick="criarCategoria()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Nova Categoria</button>
-                <button onclick="criarItem()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Novo Produto</button>
-                <button onclick="adicionarQuantidadeEstoque()" class="bg-green-600 text-white px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-lg flex-1">+ Entrada</button>
-            </div>
-
             <div id="lista-estoque" class="space-y-4"></div>
         </section>
 
-        <section id="aba-chat" class="aba hidden">
-            <div id="lista-contatos" class="space-y-2">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Conversas</h2>
-                    <button onclick="adicionarContato()" class="bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full font-black uppercase">+ Adicionar</button>
-                </div>
-                <div id="contatos-container" class="space-y-2"></div>
-            </div>
-            <div id="janela-conversa" class="fixed inset-0 bg-white z-[70] hidden flex flex-col">
-                <div class="p-4 border-b flex items-center bg-gray-50">
-                    <button onclick="fecharChat()" class="mr-4 text-gray-400 text-xl">←</button>
-                    <div><p id="chat-nome-destino" class="font-black text-gray-800 uppercase text-sm"></p><p id="chat-status-destino" class="text-[9px] font-bold uppercase text-green-500 h-3"></p></div>
-                </div>
-                <div id="chat-mensagens" class="flex-1 overflow-y-auto p-4 space-y-3 bg-chat bg-gray-100"></div>
-                <div class="p-4 border-t flex gap-2 bg-white items-center">
-                    <button id="btn-audio" onmousedown="iniciarGravacao()" onmouseup="pararGravacao()" onmouseleave="pararGravacao()" ontouchstart="iniciarGravacao()" ontouchend="pararGravacao()" class="bg-gray-100 text-gray-500 w-12 h-12 rounded-full flex items-center justify-center shadow-sm"><span id="mic-icon" class="text-lg">🎤</span></button>
-                    <input type="text" id="input-msg" oninput="emitirDigitando()" placeholder="Digite uma mensagem..." class="flex-1 bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm outline-none">
-                    <button onclick="enviarMensagem()" class="bg-blue-600 text-white w-12 h-12 rounded-full font-black flex items-center justify-center shadow-md">❯</button>
-                </div>
-            </div>
+        <section id="aba-baixas" class="aba hidden">
+            <div id="lista-baixas" class="space-y-3"></div>
         </section>
 
         <section id="aba-relatorios" class="aba hidden">
-            <div class="mb-6"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Movimentação Anual</h2><div id="container-anos" class="space-y-4"></div></div>
+            <div id="historico-os" class="space-y-3"></div>
         </section>
-
-        <section id="aba-staff" class="aba hidden"><div class="mb-4"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Painel Staff</h2></div><div id="lista-usuarios-staff" class="space-y-2"></div></section>
-        <section id="aba-obs" class="aba hidden"><div id="lista-obs" class="space-y-3"></div></section>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const SENHA_ADMIN = "eta2026estoque";
-        const ADMIN_NAME = "Guilherme Cardoso Cirilo"; // Nome do administrador
         
-        let usuarioAtual = null, todosOsItens = [], contatoAtivo = null, usuariosOnline = {}, mediaRecorder, audioChunks = [], pressTimer, chatPressTimer, digitandoTimeout;
+        let todosOsItens = [];
 
-        window.onload = () => { const salvo = localStorage.getItem('usuario_estoque'); if (salvo) { usuarioAtual = JSON.parse(salvo); abrirApp(); } };
-
-        function alternarAutenticacao(tipo) {
-            document.getElementById('tela-login').classList.toggle('hidden', tipo === 'cadastro');
-            document.getElementById('tela-cadastro').classList.toggle('hidden', tipo !== 'cadastro');
+        // --- ADMIN ---
+        async function criarCategoria() {
+            const nome = prompt("Nome da categoria:").toUpperCase();
+            if(nome) { await _supabase.from('categorias').insert([{ nome }]); carregarEstoque(); }
         }
 
-        async function registrarNovoUsuario() {
-            const nome = document.getElementById('reg-usuario').value.trim(), email = document.getElementById('reg-email').value.trim().toLowerCase(), senha = document.getElementById('reg-senha').value.trim();
-            if (!nome || !email || !senha) return alert("Preencha tudo!");
-            const { error } = await _supabase.from('usuarios').insert([{ nome_usuario: nome, email, senha }]);
-            if (error) alert("Erro: " + error.message); else { alert("Sucesso!"); alternarAutenticacao('login'); }
-        }
-
-        function configurarRealtime() {
-            const canalChat = _supabase.channel('chat-geral');
-            canalChat.on('presence', { event: 'sync' }, () => {
-                const state = canalChat.presenceState(); usuariosOnline = {};
-                Object.keys(state).forEach(id => { usuariosOnline[state[id][0].user] = true; }); renderizarContatos();
-            }).on('broadcast', { event: 'digitando' }, p => {
-                if (contatoAtivo === p.payload.user) {
-                    document.getElementById('chat-status-destino').innerText = "digitando...";
-                    clearTimeout(digitandoTimeout); digitandoTimeout = setTimeout(() => { document.getElementById('chat-status-destino').innerText = ""; }, 2000);
-                }
-            }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await canalChat.track({ user: usuarioAtual.nome_usuario }); });
-            _supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens_chat' }, () => { if (contatoAtivo) carregarHistoricoChat(); renderizarContatos(); }).subscribe();
-        }
-
-        async function marcarComoLida(r) {
-            const lidas = JSON.parse(localStorage.getItem(`lidas_${usuarioAtual.nome_usuario}`) || "{}");
-            lidas[r] = new Date().toISOString(); localStorage.setItem(`lidas_${usuarioAtual.nome_usuario}`, JSON.stringify(lidas)); atualizarContadoresNaoLidas();
-        }
-
-        async function atualizarContadoresNaoLidas() {
-            const { data: msgs } = await _supabase.from('mensagens_chat').select('remetente, criado_em').eq('destinatario', usuarioAtual.nome_usuario);
-            const lidas = JSON.parse(localStorage.getItem(`lidas_${usuarioAtual.nome_usuario}`) || "{}"), counts = {}; let total = 0;
-            if (msgs) msgs.forEach(m => { if (new Date(m.criado_em) > new Date(lidas[m.remetente] || 0)) { counts[m.remetente] = (counts[m.remetente] || 0) + 1; total++; } });
-            const b = document.getElementById('global-unread-count'); b.innerText = total; b.classList.toggle('hidden', total === 0);
-            document.querySelectorAll('[data-unread]').forEach(el => { const u = el.getAttribute('data-unread'); el.innerText = counts[u] || ""; el.classList.toggle('hidden', !counts[u]); });
-        }
-
-        async function carregarHistoricoChat() {
-            const { data } = await _supabase.from('mensagens_chat').select('*').or(`and(remetente.eq.${usuarioAtual.nome_usuario},destinatario.eq.${contatoAtivo}),and(remetente.eq.${contatoAtivo},destinatario.eq.${usuarioAtual.nome_usuario})`).order('criado_em');
-            const c = document.getElementById('chat-mensagens');
-            c.innerHTML = data?.map(m => {
-                const eu = m.remetente === usuarioAtual.nome_usuario, h = new Date(m.criado_em).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const cont = m.texto.startsWith("AUDIO_BASE64:") ? `<audio src="${m.texto.replace("AUDIO_BASE64:", "")}" controls class="max-w-[180px] h-8"></audio>` : m.texto;
-                return `<div class="flex ${eu ? 'justify-end' : 'justify-start'} mb-1"><div onmousedown="iniciarPressExcluir(${m.id}, '${m.remetente}')" onmouseup="cancelarPressExcluir()" ontouchstart="iniciarPressExcluir(${m.id}, '${m.remetente}')" class="msg-bubble px-3 py-1.5 rounded-2xl text-sm ${eu ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white rounded-tl-none'} shadow-sm max-w-[80%]"><p class="pr-8">${cont}</p><div class="absolute bottom-1 right-2 flex items-center gap-1"><span class="text-[8px] opacity-70">${h}</span>${eu ? '<span class="text-[10px] text-blue-400">✓✓</span>' : ''}</div></div></div>`;
-            }).join('') || ''; c.scrollTop = c.scrollHeight;
-        }
-
-        async function renderizarContatos() {
-            let contatos = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
-            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
-            const { data: recebidas } = await _supabase.from('mensagens_chat').select('remetente').eq('destinatario', usuarioAtual.nome_usuario);
-            if (recebidas) recebidas.forEach(m => { if (!contatos.includes(m.remetente) && !ocultos.includes(m.remetente)) contatos.push(m.remetente); });
-            localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(contatos));
-            document.getElementById('contatos-container').innerHTML = contatos.map(c => `
-                <div onclick="abrirConversa('${c}')" onmousedown="iniciarPressChat('${c}')" onmouseup="cancelarPressChat()" ontouchstart="iniciarPressChat('${c}')" ontouchend="cancelarPressChat()" class="bg-white p-4 rounded-2xl border flex items-center gap-3 card-clicavel relative">
-                    <div class="w-3 h-3 rounded-full ${usuariosOnline[c] ? 'bg-green-500' : 'bg-gray-300'} border-2 border-white shadow-sm"></div>
-                    <span class="font-bold text-gray-800 text-xs flex-1 uppercase">${c}</span>
-                    <span data-unread="${c}" class="unread-badge hidden bg-blue-600 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center"></span>
-                </div>`).join(''); atualizarContadoresNaoLidas();
-        }
-
-        function iniciarPressChat(nome) { chatPressTimer = setTimeout(() => { if (confirm(`Remover conversa com ${nome}?`)) excluirContato(nome); }, 800); }
-        function cancelarPressChat() { clearTimeout(chatPressTimer); }
-        function excluirContato(nome) {
-            let c = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
-            c = c.filter(item => item !== nome);
-            localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c));
-            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
-            if(!ocultos.includes(nome)) ocultos.push(nome);
-            localStorage.setItem(`ocultos_${usuarioAtual.nome_usuario}`, JSON.stringify(ocultos));
-            renderizarContatos();
-        }
-
-        async function adicionarContato() {
-            const n = prompt("Nome de usuário:"); if (!n) return;
-            const { data } = await _supabase.from('usuarios').select('nome_usuario').eq('nome_usuario', n).maybeSingle();
-            if (!data) return alert("USUÁRIO INEXISTENTE");
-            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
-            ocultos = ocultos.filter(item => item !== n);
-            localStorage.setItem(`ocultos_${usuarioAtual.nome_usuario}`, JSON.stringify(ocultos));
-            let c = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
-            if (!c.includes(n)) { c.push(n); localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c)); }
-            renderizarContatos();
-        }
-
-        async function autenticar() {
-            const iden = document.getElementById('auth-identificador').value.trim(), senha = document.getElementById('auth-senha').value.trim();
-            let res = (iden === 'admin' && senha === SENHA_ADMIN) ? { nome_usuario: ADMIN_NAME } : null;
-            if (!res) { const { data } = await _supabase.from('usuarios').select('*').or(`email.eq.${iden.toLowerCase()},nome_usuario.eq.${iden}`).eq('senha', senha).maybeSingle(); res = data; }
-            if (res) { usuarioAtual = res; localStorage.setItem('usuario_estoque', JSON.stringify(res)); abrirApp(); } else alert("Erro!");
-        }
-
-        function abrirApp() {
-            document.getElementById('tela-login').classList.add('hidden'); 
-            document.getElementById('tela-cadastro').classList.add('hidden'); 
-            document.getElementById('app').classList.remove('hidden');
-            
-            const isAdmin = (usuarioAtual.nome_usuario === ADMIN_NAME);
-            
-            // Controle de elementos Staff/Admin
-            document.getElementById('user-display').innerText = (isAdmin ? "ADMIN | " : "") + usuarioAtual.nome_usuario;
-            document.getElementById('btn-staff').classList.toggle('hidden', !isAdmin);
-            document.getElementById('controles-admin').classList.toggle('hidden', !isAdmin); // EXIBE BOTÕES DE ENTRADA/NOVO
-            
-            configurarRealtime(); carregarEstoque(); verificarObservacoes(); renderizarContatos();
-        }
-
-        function sair() { localStorage.removeItem('usuario_estoque'); location.reload(); }
-        
-        function mudarAba(aba) { 
-            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden')); 
-            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa')); 
-            document.getElementById(`aba-${aba}`).classList.remove('hidden'); 
-            document.getElementById(`btn-${aba}`).classList.add('aba-ativa'); 
-            if(aba === 'staff') carregarUsuariosStaff();
-            if(aba === 'relatorios') carregarRelatoriosGraficos();
-        }
-
-        async function carregarEstoque() { const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome'); todosOsItens = data || []; renderizarItens(todosOsItens); }
-        
-        function renderizarItens(itens) {
-            const lista = document.getElementById('lista-estoque'), categorias = {};
-            itens.forEach(i => { const cat = i.categorias?.nome || "GERAL"; if (!categorias[cat]) categorias[cat] = []; categorias[cat].push(i); });
-            lista.innerHTML = Object.keys(categorias).map(cat => `<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4"><div class="bg-gray-50 px-5 py-2 text-[9px] font-black text-gray-400 uppercase border-b tracking-widest">${cat}</div>${categorias[cat].map(item => `<div onclick='abrirModalUso(${JSON.stringify(item)})' class="p-5 border-b last:border-0 card-clicavel flex justify-between items-center"><div><p class="font-bold text-gray-800 text-sm">${item.nome} ${item.observacao ? '⚠️' : ''}</p><p class="text-[11px] font-black text-blue-500 uppercase">Qtd: ${item.quantidade}</p></div></div>`).join('')}</div>`).join('');
-        }
-
-        async function adicionarQuantidadeEstoque() {
-            if (usuarioAtual.nome_usuario !== ADMIN_NAME) return;
-            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
-            if(!itens || itens.length === 0) return alert("Nenhum item cadastrado.");
-            const listaTxt = itens.map((item, index) => `${index}) ${item.nome} (Atual: ${item.quantidade})`).join('\n');
-            const escolha = prompt("Selecione o número do item para entrada:\n" + listaTxt);
-            if (escolha !== null && itens[escolha]) {
-                const itemSelecionado = itens[escolha];
-                const qtdAdicional = parseInt(prompt(`Quanto deseja adicionar ao estoque de ${itemSelecionado.nome}?`));
-                if (!isNaN(qtdAdicional) && qtdAdicional > 0) {
-                    const novaQtd = itemSelecionado.quantidade + qtdAdicional;
-                    const { error } = await _supabase.from('itens').update({ quantidade: novaQtd }).eq('id', itemSelecionado.id);
-                    if (error) alert("Erro ao atualizar: " + error.message);
-                    else {
-                        await _supabase.from('historico_movimentacao').insert([{ tipo: 'ENTRADA', quantidade: qtdAdicional, item_id: itemSelecionado.id }]);
-                        alert(`Estoque atualizado! ${itemSelecionado.nome}: ${novaQtd}`);
-                        carregarEstoque();
-                    }
-                } else { alert("Quantidade inválida."); }
+        async function criarItem() {
+            const { data: cats } = await _supabase.from('categorias').select('*');
+            const escolha = prompt("Selecione a Categoria:\n" + cats.map((c,i)=>`${i}) ${c.nome}`).join('\n'));
+            const nome = prompt("Nome do produto:");
+            if(nome && cats[escolha]) { 
+                await _supabase.from('itens').insert([{ nome, categoria_id: cats[escolha].id, quantidade: 0 }]); 
+                carregarEstoque(); 
             }
         }
 
-        function filtrarItens() { const termo = document.getElementById('input-busca').value.toLowerCase(); renderizarItens(todosOsItens.filter(i => i.nome.toLowerCase().includes(termo))); }
-        
-        function abrirModalUso(item) {
-            document.getElementById('modal-titulo').innerText = item.nome; document.getElementById('info-estoque').innerText = `Estoque: ${item.quantidade}`; document.getElementById('modal-uso').classList.remove('hidden');
-            document.getElementById('btn-confirmar-uso').onclick = async () => {
-                const obs = document.getElementById('input-obs').value.trim(), qtd = parseInt(document.getElementById('input-qtd').value);
-                if (!obs || isNaN(qtd) || qtd <= 0 || qtd > item.quantidade) return alert("Quantidade indisponível ou descrição vazia!");
-                const { error } = await _supabase.from('itens').update({ quantidade: item.quantidade - qtd, observacao: obs, qtd_obs: qtd }).eq('id', item.id);
-                if(!error) {
-                    await _supabase.from('historico_movimentacao').insert([{ tipo: 'SAIDA', quantidade: qtd, item_id: item.id }]);
-                    fecharModal(); carregarEstoque(); verificarObservacoes();
-                }
-            };
+        async function adicionarQuantidadeEstoque() {
+            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
+            const escolha = prompt("Selecione o Produto:\n" + itens.map((it,i)=>`${i}) ${it.nome}`).join('\n'));
+            const qtd = parseInt(prompt("Quantidade para adicionar:"));
+            if(itens[escolha] && !isNaN(qtd)) {
+                await _supabase.from('itens').update({ quantidade: itens[escolha].quantidade + qtd }).eq('id', itens[escolha].id);
+                await _supabase.from('historico_movimentacao').insert([{ tipo: 'ENTRADA', quantidade: qtd, item_id: itens[escolha].id, observacao: 'Entrada via Admin' }]);
+                carregarEstoque();
+            }
         }
 
-        function fecharModal() { document.getElementById('modal-uso').classList.add('hidden'); }
-        async function criarCategoria() { if (usuarioAtual.nome_usuario !== ADMIN_NAME) return; const n = prompt("Nome da Categoria:"); if (n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); } }
-        async function criarItem() { if (usuarioAtual.nome_usuario !== ADMIN_NAME) return; const { data: cats } = await _supabase.from('categorias').select('*'); if(!cats) return; const idx = prompt("Selecione a Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n')), n = prompt("Nome do Produto:"), q = parseInt(prompt("Quantidade inicial:", 0)); if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); } }
-        
-        async function verificarObservacoes() {
-            const { data } = await _supabase.from('itens').select('*').not('observacao', 'is', null).neq('observacao', '');
-            document.getElementById('btn-obs').classList.toggle('hidden', !data?.length);
-            document.getElementById('lista-obs').innerHTML = data?.map(i => `<div class="bg-white p-4 rounded-2xl border-l-4 border-red-500 shadow-sm flex justify-between items-center mb-2"><p class="text-xs font-bold uppercase">${i.nome}: <span class="font-normal normal-case italic">"${i.observacao}"</span></p><button onclick="limparAlerta(${i.id})">✅</button></div>`).join('') || '';
+        // --- LÓGICA DE ORDEM DE SERVIÇO ---
+        function abrirModalOS() {
+            const lista = document.getElementById('os-lista-materiais');
+            lista.innerHTML = todosOsItens.map(i => `
+                <div class="flex justify-between items-center p-2 border-b text-xs">
+                    <span>${i.nome}</span>
+                    <input type="number" data-id="${i.id}" data-nome="${i.nome}" data-estoque="${i.quantidade}" class="os-item-qtd w-12 border rounded text-center py-1" value="0" min="0">
+                </div>`).join('');
+            document.getElementById('modal-os').classList.remove('hidden');
         }
 
-        async function carregarRelatoriosGraficos() {
-            const container = document.getElementById('container-anos');
-            container.innerHTML = '<p class="text-center text-[10px] font-black text-gray-400 animate-pulse">CARREGANDO DADOS...</p>';
-            const { data: logs, error } = await _supabase.from('historico_movimentacao').select('*').order('criado_em', { ascending: false });
-            if (error || !logs || logs.length === 0) { container.innerHTML = '<p class="text-center text-[10px] font-black text-red-400 uppercase p-10 bg-white rounded-2xl border">Sem histórico.</p>'; return; }
-            const estrutura = {};
-            logs.forEach(log => {
-                const d = new Date(log.criado_em), ano = d.getFullYear(), mes = d.toLocaleString('pt-br', { month: 'long' }).toUpperCase();
-                if (!estrutura[ano]) estrutura[ano] = {}; if (!estrutura[ano][mes]) estrutura[ano][mes] = { entradas: 0, saidas: 0 };
-                if (log.tipo === 'ENTRADA') estrutura[ano][mes].entradas += log.quantidade; else estrutura[ano][mes].saidas += log.quantidade;
+        function fecharModalOS() { document.getElementById('modal-os').classList.add('hidden'); }
+
+        async function salvarOS() {
+            const enc = document.getElementById('os-encanador').value;
+            const loc = document.getElementById('os-local').value;
+            if(!enc || !loc) return alert("Por favor, preencha Encanador e Local.");
+
+            const selecionados = [];
+            document.querySelectorAll('.os-item-qtd').forEach(input => {
+                const q = parseInt(input.value);
+                if(q > 0) selecionados.push({ id: input.dataset.id, nome: input.dataset.nome, qtd: q, estoqueAntes: parseInt(input.dataset.estoque) });
             });
-            container.innerHTML = '';
-            Object.keys(estrutura).forEach(ano => {
-                const anoCard = document.createElement('div');
-                anoCard.className = "bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden";
-                anoCard.innerHTML = `<div onclick="this.nextElementSibling.classList.toggle('hidden')" class="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50"><span class="text-xl font-black text-gray-800">${ano}</span><span class="text-blue-600 text-[10px] font-black uppercase">MESES ▾</span></div><div class="hidden border-t border-gray-50 bg-gray-50/50 p-4 space-y-4">${Object.keys(estrutura[ano]).map(mes => `<div class="bg-white p-4 rounded-xl border border-gray-100"><h4 class="text-[9px] font-black text-gray-400 mb-3 tracking-widest uppercase">${mes}</h4><div class="h-40 w-full"><canvas id="chart-${ano}-${mes}"></canvas></div></div>`).join('')}</div>`;
-                container.appendChild(anoCard);
-                Object.keys(estrutura[ano]).forEach(mes => {
-                    setTimeout(() => {
-                        const ctx = document.getElementById(`chart-${ano}-${mes}`).getContext('2d');
-                        new Chart(ctx, {
-                            type: 'bar',
-                            data: { labels: ['Entradas', 'Saídas'], datasets: [{ data: [estrutura[ano][mes].entradas, estrutura[ano][mes].saidas], backgroundColor: ['#10b981', '#ef4444'], borderRadius: 6 }] },
-                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { display: false }, ticks: { font: { size: 9 } } }, x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } } } }
-                        });
-                    }, 50);
-                });
-            });
+
+            if(selecionados.length === 0) return alert("Selecione ao menos um item.");
+
+            for(const it of selecionados) {
+                await _supabase.from('itens').update({ quantidade: it.estoqueAntes - it.qtd }).eq('id', it.id);
+                await _supabase.from('historico_movimentacao').insert([{ tipo: 'SAIDA', quantidade: it.qtd, item_id: it.id, observacao: `O.S. Local: ${loc}` }]);
+            }
+
+            const hist = JSON.parse(localStorage.getItem('historico_os') || "[]");
+            // Calcula o próximo número baseado no maior número já existente no histórico
+            const maiorNum = hist.length > 0 ? Math.max(...hist.map(o => parseInt(o.numero))) : 0;
+            const num = (maiorNum + 1).toString().padStart(3, '0');
+            
+            const novaOS = { id: Date.now(), numero: num, encanador: enc, local: loc, data: document.getElementById('os-data').value, itens: selecionados };
+            
+            hist.unshift(novaOS);
+            localStorage.setItem('historico_os', JSON.stringify(hist));
+
+            alert(`O.S. Nº${num} Gerada com Sucesso!`);
+            fecharModalOS(); carregarEstoque(); renderizarHistoricoOS();
         }
 
-        async function limparAlerta(id) { await _supabase.from('itens').update({ observacao: null, qtd_obs: 0 }).eq('id', id); verificarObservacoes(); carregarEstoque(); }
-        
-        async function carregarUsuariosStaff() {
-            if (usuarioAtual.nome_usuario !== ADMIN_NAME) return;
-            const { data: u } = await _supabase.from('usuarios').select('id, nome_usuario, email').neq('nome_usuario', ADMIN_NAME);
-            document.getElementById('lista-usuarios-staff').innerHTML = u?.map(u => `<div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm"><div><p class="font-bold text-gray-800 text-xs uppercase">${u.nome_usuario}</p><p class="text-[9px] text-gray-400">${u.email}</p></div><button onclick="removerUsuario(${u.id}, '${u.nome_usuario}')" class="bg-red-50 text-red-500 p-2 rounded-lg text-[10px] font-black uppercase">Excluir</button></div>`).join('') || '';
+        function renderizarHistoricoOS() {
+            const h = JSON.parse(localStorage.getItem('historico_os') || "[]");
+            document.getElementById('historico-os').innerHTML = h.map(os => `
+                <div onclick='visualizarDetalheOS(${JSON.stringify(os)})' class="bg-white p-4 rounded-xl border flex justify-between items-center card-clicavel shadow-sm border-l-4 border-l-blue-500">
+                    <div>
+                        <p class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">Nº${os.numero}</p>
+                        <p class="font-bold text-xs uppercase text-gray-800">${os.local}</p>
+                    </div>
+                    <p class="text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-2 py-1 rounded-md">${os.encanador}</p>
+                </div>`).join('') || '<p class="text-center text-[10px] text-gray-400 py-10">Nenhuma Ordem de Serviço lançada.</p>';
         }
 
-        async function removerUsuario(id, nome) { 
-            if (confirm(`Excluir ${nome}?`)) { 
-                try {
-                    await _supabase.from('mensagens_chat').delete().or(`remetente.eq.${nome},destinatario.eq.${nome}`);
-                    await _supabase.from('usuarios').delete().eq('id', id);
-                    alert(`Usuário removido.`); carregarUsuariosStaff();
-                } catch (err) { alert("Erro: " + err.message); }
-            } 
+        function visualizarDetalheOS(os) {
+            document.getElementById('detalhe-titulo').innerText = `Ordem de Serviço Nº${os.numero}`;
+            document.getElementById('detalhe-conteudo').innerHTML = `
+                <div class="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                    <p class="text-[10px] uppercase font-black text-blue-400">Local da Obra</p>
+                    <p class="text-gray-800 font-bold">${os.local}</p>
+                    <p class="text-[10px] uppercase font-black text-blue-400 mt-2">Responsável</p>
+                    <p class="text-gray-800 font-bold">${os.encanador}</p>
+                </div>
+                <div class="pt-2">
+                    <p class="text-[10px] font-black uppercase text-gray-400 mb-2">Materiais Utilizados:</p>
+                    <div class="space-y-1">${os.itens.map(i => `<div class="flex justify-between py-1 border-b border-gray-100 italic"><span>${i.nome}</span><b>${i.qtd} un</b></div>`).join('')}</div>
+                </div>
+            `;
+            
+            // Configura o botão de excluir para esta OS específica
+            document.getElementById('btn-excluir-os').onclick = () => excluirOS(os.id);
+            document.getElementById('modal-detalhe-geral').classList.remove('hidden');
         }
 
-        async function iniciarGravacao() {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(s); audioChunks = [];
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                mediaRecorder.onstop = async () => {
-                    const r = new FileReader(); r.readAsDataURL(new Blob(audioChunks, { type: 'audio/webm' }));
-                    r.onloadend = async () => await _supabase.from('mensagens_chat').insert([{ remetente: usuarioAtual.nome_usuario, destinatario: contatoAtivo, texto: "AUDIO_BASE64:" + r.result }]);
-                };
-                mediaRecorder.start(); document.getElementById('mic-icon').innerText = "🔴";
-            } catch (err) { alert("Microfone negado!"); }
+        function excluirOS(id) {
+            if(confirm("Deseja realmente excluir este registro de O.S.?\n(Isso não retornará os itens ao estoque automaticamente)")) {
+                let hist = JSON.parse(localStorage.getItem('historico_os') || "[]");
+                hist = hist.filter(os => os.id !== id);
+                localStorage.setItem('historico_os', JSON.stringify(hist));
+                document.getElementById('modal-detalhe-geral').classList.add('hidden');
+                renderizarHistoricoOS();
+            }
         }
-        function pararGravacao() { if (mediaRecorder?.state === "recording") { mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop()); document.getElementById('mic-icon').innerText = "🎤"; } }
-        function abrirConversa(n) { contatoAtivo = n; document.getElementById('chat-nome-destino').innerText = n; document.getElementById('janela-conversa').classList.remove('hidden'); marcarComoLida(n); carregarHistoricoChat(); }
-        function fecharChat() { if(contatoAtivo) marcarComoLida(contatoAtivo); contatoAtivo = null; document.getElementById('janela-conversa').classList.add('hidden'); }
-        async function enviarMensagem() { const i = document.getElementById('input-msg'); if(!i.value.trim()) return; const m = i.value; i.value = ""; await _supabase.from('mensagens_chat').insert([{ remetente: usuarioAtual.nome_usuario, destinatario: contatoAtivo, texto: m }]); }
-        function iniciarPressExcluir(id, r) { if (r === usuarioAtual.nome_usuario) pressTimer = setTimeout(async () => { if (confirm("Apagar?")) await _supabase.from('mensagens_chat').delete().eq('id', id); }, 600); }
-        function cancelarPressExcluir() { clearTimeout(pressTimer); }
-        function emitirDigitando() { if (contatoAtivo) _supabase.channel('chat-geral').send({ type: 'broadcast', event: 'digitando', payload: { user: usuarioAtual.nome_usuario } }); }
+
+        // --- SISTEMA CORE ---
+        async function carregarEstoque() {
+            const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome');
+            todosOsItens = data || [];
+            const lista = document.getElementById('lista-estoque'), cats = {};
+            todosOsItens.forEach(i => { const c = i.categorias?.nome || "GERAL"; if(!cats[c]) cats[c] = []; cats[c].push(i); });
+            lista.innerHTML = Object.keys(cats).map(c => `
+                <div class="bg-white rounded-xl border mb-4 shadow-sm overflow-hidden">
+                    <div class="bg-gray-50 p-2 text-[8px] font-black text-gray-400 border-b uppercase tracking-widest">${c}</div>
+                    ${cats[c].map(it => `<div class="p-4 flex justify-between border-b last:border-0"><span class="text-sm font-bold text-gray-700">${it.nome}</span><span class="text-blue-500 font-black">Qtd: ${it.quantidade}</span></div>`).join('')}
+                </div>`).join('');
+        }
+
+        function mudarAba(aba) {
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
+            document.getElementById(`aba-${aba}`).classList.remove('hidden');
+            document.getElementById(`btn-${aba}`).classList.add('aba-ativa');
+            if(aba === 'relatorios') renderizarHistoricoOS();
+            if(aba === 'baixas') carregarBaixas();
+        }
+
+        async function carregarBaixas() {
+            const { data } = await _supabase.from('historico_movimentacao').select('*, itens(nome)').eq('tipo', 'SAIDA').order('created_at', { ascending: false });
+            document.getElementById('lista-baixas').innerHTML = data?.map(b => `
+                <div class="bg-white p-4 rounded-xl border flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] font-black text-blue-500">${new Date(b.created_at).toLocaleDateString()}</p><p class="font-bold text-xs uppercase">${b.itens?.nome}</p></div>
+                    <p class="text-xs font-black text-red-500">-${b.quantidade}</p>
+                </div>`).join('') || '<p class="text-center text-[10px] text-gray-400 py-10">Nenhuma baixa avulsa.</p>';
+        }
+
+        window.onload = () => carregarEstoque();
     </script>
 </body>
 </html>
