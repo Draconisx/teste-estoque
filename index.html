@@ -91,11 +91,13 @@
 
         <section id="aba-estoque" class="aba">
             <div class="relative mb-4"><input type="search" id="input-busca" oninput="filtrarItens()" placeholder="Buscar item..." class="w-full bg-gray-100 border-none rounded-xl py-3 pl-10 text-sm outline-none"><span class="absolute left-3 top-3.5 opacity-30">🔍</span></div>
-            <div class="flex gap-2 mb-4">
+            
+            <div id="controles-admin" class="hidden flex gap-2 mb-4">
                 <button onclick="criarCategoria()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Nova Categoria</button>
                 <button onclick="criarItem()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Novo Produto</button>
                 <button onclick="adicionarQuantidadeEstoque()" class="bg-green-600 text-white px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-lg flex-1">+ Entrada</button>
             </div>
+
             <div id="lista-estoque" class="space-y-4"></div>
         </section>
 
@@ -122,18 +124,10 @@
         </section>
 
         <section id="aba-relatorios" class="aba hidden">
-            <div class="mb-6">
-                <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Movimentação Anual</h2>
-                <div id="container-anos" class="space-y-4"></div>
-            </div>
+            <div class="mb-6"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Movimentação Anual</h2><div id="container-anos" class="space-y-4"></div></div>
         </section>
 
-        <section id="aba-staff" class="aba hidden">
-            <div class="mb-4">
-                <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Painel Staff</h2>
-            </div>
-            <div id="lista-usuarios-staff" class="space-y-2"></div>
-        </section>
+        <section id="aba-staff" class="aba hidden"><div class="mb-4"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Painel Staff</h2></div><div id="lista-usuarios-staff" class="space-y-2"></div></section>
         <section id="aba-obs" class="aba hidden"><div id="lista-obs" class="space-y-3"></div></section>
     </div>
 
@@ -142,6 +136,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const SENHA_ADMIN = "eta2026estoque";
+        const ADMIN_NAME = "Guilherme Cardoso Cirilo"; // Nome do administrador
         
         let usuarioAtual = null, todosOsItens = [], contatoAtivo = null, usuariosOnline = {}, mediaRecorder, audioChunks = [], pressTimer, chatPressTimer, digitandoTimeout;
 
@@ -172,8 +167,6 @@
             }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await canalChat.track({ user: usuarioAtual.nome_usuario }); });
             _supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens_chat' }, () => { if (contatoAtivo) carregarHistoricoChat(); renderizarContatos(); }).subscribe();
         }
-
-        function emitirDigitando() { if (contatoAtivo) _supabase.channel('chat-geral').send({ type: 'broadcast', event: 'digitando', payload: { user: usuarioAtual.nome_usuario } }); }
 
         async function marcarComoLida(r) {
             const lidas = JSON.parse(localStorage.getItem(`lidas_${usuarioAtual.nome_usuario}`) || "{}");
@@ -214,7 +207,6 @@
 
         function iniciarPressChat(nome) { chatPressTimer = setTimeout(() => { if (confirm(`Remover conversa com ${nome}?`)) excluirContato(nome); }, 800); }
         function cancelarPressChat() { clearTimeout(chatPressTimer); }
-        
         function excluirContato(nome) {
             let c = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
             c = c.filter(item => item !== nome);
@@ -239,15 +231,23 @@
 
         async function autenticar() {
             const iden = document.getElementById('auth-identificador').value.trim(), senha = document.getElementById('auth-senha').value.trim();
-            let res = (iden === 'admin' && senha === SENHA_ADMIN) ? { nome_usuario: 'ADMIN' } : null;
+            let res = (iden === 'admin' && senha === SENHA_ADMIN) ? { nome_usuario: ADMIN_NAME } : null;
             if (!res) { const { data } = await _supabase.from('usuarios').select('*').or(`email.eq.${iden.toLowerCase()},nome_usuario.eq.${iden}`).eq('senha', senha).maybeSingle(); res = data; }
             if (res) { usuarioAtual = res; localStorage.setItem('usuario_estoque', JSON.stringify(res)); abrirApp(); } else alert("Erro!");
         }
 
         function abrirApp() {
-            document.getElementById('tela-login').classList.add('hidden'); document.getElementById('tela-cadastro').classList.add('hidden'); document.getElementById('app').classList.remove('hidden');
-            document.getElementById('user-display').innerText = (usuarioAtual.nome_usuario === "Guilherme Cardoso Cirilo" ? "ADMIN | " : "") + usuarioAtual.nome_usuario;
-            if (usuarioAtual.nome_usuario === "Guilherme Cardoso Cirilo") document.getElementById('btn-staff').classList.remove('hidden');
+            document.getElementById('tela-login').classList.add('hidden'); 
+            document.getElementById('tela-cadastro').classList.add('hidden'); 
+            document.getElementById('app').classList.remove('hidden');
+            
+            const isAdmin = (usuarioAtual.nome_usuario === ADMIN_NAME);
+            
+            // Controle de elementos Staff/Admin
+            document.getElementById('user-display').innerText = (isAdmin ? "ADMIN | " : "") + usuarioAtual.nome_usuario;
+            document.getElementById('btn-staff').classList.toggle('hidden', !isAdmin);
+            document.getElementById('controles-admin').classList.toggle('hidden', !isAdmin); // EXIBE BOTÕES DE ENTRADA/NOVO
+            
             configurarRealtime(); carregarEstoque(); verificarObservacoes(); renderizarContatos();
         }
 
@@ -271,7 +271,7 @@
         }
 
         async function adicionarQuantidadeEstoque() {
-            const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return;
+            if (usuarioAtual.nome_usuario !== ADMIN_NAME) return;
             const { data: itens } = await _supabase.from('itens').select('*').order('nome');
             if(!itens || itens.length === 0) return alert("Nenhum item cadastrado.");
             const listaTxt = itens.map((item, index) => `${index}) ${item.nome} (Atual: ${item.quantidade})`).join('\n');
@@ -308,8 +308,8 @@
         }
 
         function fecharModal() { document.getElementById('modal-uso').classList.add('hidden'); }
-        async function criarCategoria() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const n = prompt("Nome da Categoria:"); if (n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); } }
-        async function criarItem() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const { data: cats } = await _supabase.from('categorias').select('*'); if(!cats) return; const idx = prompt("Selecione a Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n')), n = prompt("Nome do Produto:"), q = parseInt(prompt("Quantidade inicial:", 0)); if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); } }
+        async function criarCategoria() { if (usuarioAtual.nome_usuario !== ADMIN_NAME) return; const n = prompt("Nome da Categoria:"); if (n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); } }
+        async function criarItem() { if (usuarioAtual.nome_usuario !== ADMIN_NAME) return; const { data: cats } = await _supabase.from('categorias').select('*'); if(!cats) return; const idx = prompt("Selecione a Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n')), n = prompt("Nome do Produto:"), q = parseInt(prompt("Quantidade inicial:", 0)); if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); } }
         
         async function verificarObservacoes() {
             const { data } = await _supabase.from('itens').select('*').not('observacao', 'is', null).neq('observacao', '');
@@ -321,19 +321,12 @@
             const container = document.getElementById('container-anos');
             container.innerHTML = '<p class="text-center text-[10px] font-black text-gray-400 animate-pulse">CARREGANDO DADOS...</p>';
             const { data: logs, error } = await _supabase.from('historico_movimentacao').select('*').order('criado_em', { ascending: false });
-            if (error || !logs || logs.length === 0) {
-                container.innerHTML = '<p class="text-center text-[10px] font-black text-red-400 uppercase p-10 bg-white rounded-2xl border">Sem histórico de movimentação.</p>';
-                return;
-            }
+            if (error || !logs || logs.length === 0) { container.innerHTML = '<p class="text-center text-[10px] font-black text-red-400 uppercase p-10 bg-white rounded-2xl border">Sem histórico.</p>'; return; }
             const estrutura = {};
             logs.forEach(log => {
-                const d = new Date(log.criado_em);
-                const ano = d.getFullYear();
-                const mes = d.toLocaleString('pt-br', { month: 'long' }).toUpperCase();
-                if (!estrutura[ano]) estrutura[ano] = {};
-                if (!estrutura[ano][mes]) estrutura[ano][mes] = { entradas: 0, saidas: 0 };
-                if (log.tipo === 'ENTRADA') estrutura[ano][mes].entradas += log.quantidade;
-                else estrutura[ano][mes].saidas += log.quantidade;
+                const d = new Date(log.criado_em), ano = d.getFullYear(), mes = d.toLocaleString('pt-br', { month: 'long' }).toUpperCase();
+                if (!estrutura[ano]) estrutura[ano] = {}; if (!estrutura[ano][mes]) estrutura[ano][mes] = { entradas: 0, saidas: 0 };
+                if (log.tipo === 'ENTRADA') estrutura[ano][mes].entradas += log.quantidade; else estrutura[ano][mes].saidas += log.quantidade;
             });
             container.innerHTML = '';
             Object.keys(estrutura).forEach(ano => {
@@ -346,10 +339,7 @@
                         const ctx = document.getElementById(`chart-${ano}-${mes}`).getContext('2d');
                         new Chart(ctx, {
                             type: 'bar',
-                            data: {
-                                labels: ['Entradas', 'Saídas'],
-                                datasets: [{ data: [estrutura[ano][mes].entradas, estrutura[ano][mes].saidas], backgroundColor: ['#10b981', '#ef4444'], borderRadius: 6 }]
-                            },
+                            data: { labels: ['Entradas', 'Saídas'], datasets: [{ data: [estrutura[ano][mes].entradas, estrutura[ano][mes].saidas], backgroundColor: ['#10b981', '#ef4444'], borderRadius: 6 }] },
                             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { display: false }, ticks: { font: { size: 9 } } }, x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } } } }
                         });
                     }, 50);
@@ -360,37 +350,18 @@
         async function limparAlerta(id) { await _supabase.from('itens').update({ observacao: null, qtd_obs: 0 }).eq('id', id); verificarObservacoes(); carregarEstoque(); }
         
         async function carregarUsuariosStaff() {
-            if (usuarioAtual.nome_usuario !== "Guilherme Cardoso Cirilo") return;
-            const { data: u } = await _supabase.from('usuarios').select('id, nome_usuario, email').neq('nome_usuario', 'Guilherme Cardoso Cirilo');
-            document.getElementById('lista-usuarios-staff').innerHTML = u?.map(u => `
-                <div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                    <div>
-                        <p class="font-bold text-gray-800 text-xs uppercase">${u.nome_usuario}</p>
-                        <p class="text-[9px] text-gray-400">${u.email}</p>
-                    </div>
-                    <button onclick="removerUsuario(${u.id}, '${u.nome_usuario}')" class="bg-red-50 text-red-500 p-2 rounded-lg text-[10px] font-black uppercase">Excluir</button>
-                </div>`).join('') || '';
+            if (usuarioAtual.nome_usuario !== ADMIN_NAME) return;
+            const { data: u } = await _supabase.from('usuarios').select('id, nome_usuario, email').neq('nome_usuario', ADMIN_NAME);
+            document.getElementById('lista-usuarios-staff').innerHTML = u?.map(u => `<div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm"><div><p class="font-bold text-gray-800 text-xs uppercase">${u.nome_usuario}</p><p class="text-[9px] text-gray-400">${u.email}</p></div><button onclick="removerUsuario(${u.id}, '${u.nome_usuario}')" class="bg-red-50 text-red-500 p-2 rounded-lg text-[10px] font-black uppercase">Excluir</button></div>`).join('') || '';
         }
 
-        // FUNÇÃO DE EXCLUSÃO COMPLETA E CORRIGIDA
         async function removerUsuario(id, nome) { 
-            if (confirm(`Tem certeza que deseja excluir ${nome}? Todas as mensagens e o cadastro serão apagados permanentemente.`)) { 
+            if (confirm(`Excluir ${nome}?`)) { 
                 try {
-                    // Passo 1: Limpar todas as mensagens onde o usuário está envolvido
-                    // Isso remove o erro de "chave estrangeira" (foreign key) que bloqueia a exclusão
-                    const { error: msgError } = await _supabase.from('mensagens_chat').delete().or(`remetente.eq.${nome},destinatario.eq.${nome}`);
-                    if (msgError) throw msgError;
-
-                    // Passo 2: Excluir o registro do usuário
-                    const { error: userError } = await _supabase.from('usuarios').delete().eq('id', id);
-                    if (userError) throw userError;
-
-                    alert(`Usuário ${nome} excluído com sucesso!`);
-                    carregarUsuariosStaff(); // Recarrega a lista na tela
-                } catch (err) {
-                    console.error("Erro na exclusão:", err);
-                    alert("Erro ao excluir: " + err.message);
-                }
+                    await _supabase.from('mensagens_chat').delete().or(`remetente.eq.${nome},destinatario.eq.${nome}`);
+                    await _supabase.from('usuarios').delete().eq('id', id);
+                    alert(`Usuário removido.`); carregarUsuariosStaff();
+                } catch (err) { alert("Erro: " + err.message); }
             } 
         }
 
@@ -409,8 +380,9 @@
         function abrirConversa(n) { contatoAtivo = n; document.getElementById('chat-nome-destino').innerText = n; document.getElementById('janela-conversa').classList.remove('hidden'); marcarComoLida(n); carregarHistoricoChat(); }
         function fecharChat() { if(contatoAtivo) marcarComoLida(contatoAtivo); contatoAtivo = null; document.getElementById('janela-conversa').classList.add('hidden'); }
         async function enviarMensagem() { const i = document.getElementById('input-msg'); if(!i.value.trim()) return; const m = i.value; i.value = ""; await _supabase.from('mensagens_chat').insert([{ remetente: usuarioAtual.nome_usuario, destinatario: contatoAtivo, texto: m }]); }
-        function iniciarPressExcluir(id, r) { if (r === usuarioAtual.nome_usuario) pressTimer = setTimeout(async () => { if (confirm("Apagar para todos?")) await _supabase.from('mensagens_chat').delete().eq('id', id); }, 600); }
+        function iniciarPressExcluir(id, r) { if (r === usuarioAtual.nome_usuario) pressTimer = setTimeout(async () => { if (confirm("Apagar?")) await _supabase.from('mensagens_chat').delete().eq('id', id); }, 600); }
         function cancelarPressExcluir() { clearTimeout(pressTimer); }
+        function emitirDigitando() { if (contatoAtivo) _supabase.channel('chat-geral').send({ type: 'broadcast', event: 'digitando', payload: { user: usuarioAtual.nome_usuario } }); }
     </script>
 </body>
 </html>
