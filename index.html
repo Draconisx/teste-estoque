@@ -6,6 +6,7 @@
     <title>Estoque Master - Chat & Relatórios</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
         .card-clicavel { cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
@@ -91,8 +92,9 @@
         <section id="aba-estoque" class="aba">
             <div class="relative mb-4"><input type="search" id="input-busca" oninput="filtrarItens()" placeholder="Buscar item..." class="w-full bg-gray-100 border-none rounded-xl py-3 pl-10 text-sm outline-none"><span class="absolute left-3 top-3.5 opacity-30">🔍</span></div>
             <div class="flex gap-2 mb-4">
-                <button onclick="criarCategoria()" class="flex-1 bg-white border border-gray-200 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">+ Categoria</button>
-                <button onclick="criarItem()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg">+ Novo Item</button>
+                <button onclick="criarCategoria()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Nova Categoria</button>
+                <button onclick="criarItem()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-sm flex-1">Novo Produto</button>
+                <button onclick="adicionarQuantidadeEstoque()" class="bg-green-600 text-white px-2 py-3 rounded-xl text-[8px] font-black uppercase tracking-tighter shadow-lg flex-1">+ Entrada</button>
             </div>
             <div id="lista-estoque" class="space-y-4"></div>
         </section>
@@ -119,8 +121,19 @@
             </div>
         </section>
 
-        <section id="aba-relatorios" class="aba hidden"><div id="container-entradas" class="space-y-2"></div></section>
-        <section id="aba-staff" class="aba hidden"><div class="mb-4"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Painel Staff</h2></div><div id="lista-usuarios-staff" class="space-y-2"></div></section>
+        <section id="aba-relatorios" class="aba hidden">
+            <div class="mb-6">
+                <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Movimentação Anual</h2>
+                <div id="container-anos" class="space-y-4"></div>
+            </div>
+        </section>
+
+        <section id="aba-staff" class="aba hidden">
+            <div class="mb-4">
+                <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Painel Staff</h2>
+            </div>
+            <div id="lista-usuarios-staff" class="space-y-2"></div>
+        </section>
         <section id="aba-obs" class="aba hidden"><div id="lista-obs" class="space-y-3"></div></section>
     </div>
 
@@ -187,8 +200,9 @@
 
         async function renderizarContatos() {
             let contatos = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
+            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
             const { data: recebidas } = await _supabase.from('mensagens_chat').select('remetente').eq('destinatario', usuarioAtual.nome_usuario);
-            if (recebidas) recebidas.forEach(m => { if (!contatos.includes(m.remetente)) contatos.push(m.remetente); });
+            if (recebidas) recebidas.forEach(m => { if (!contatos.includes(m.remetente) && !ocultos.includes(m.remetente)) contatos.push(m.remetente); });
             localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(contatos));
             document.getElementById('contatos-container').innerHTML = contatos.map(c => `
                 <div onclick="abrirConversa('${c}')" onmousedown="iniciarPressChat('${c}')" onmouseup="cancelarPressChat()" ontouchstart="iniciarPressChat('${c}')" ontouchend="cancelarPressChat()" class="bg-white p-4 rounded-2xl border flex items-center gap-3 card-clicavel relative">
@@ -200,17 +214,27 @@
 
         function iniciarPressChat(nome) { chatPressTimer = setTimeout(() => { if (confirm(`Remover conversa com ${nome}?`)) excluirContato(nome); }, 800); }
         function cancelarPressChat() { clearTimeout(chatPressTimer); }
+        
         function excluirContato(nome) {
             let c = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
-            c = c.filter(item => item !== nome); localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c)); renderizarContatos();
+            c = c.filter(item => item !== nome);
+            localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c));
+            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
+            if(!ocultos.includes(nome)) ocultos.push(nome);
+            localStorage.setItem(`ocultos_${usuarioAtual.nome_usuario}`, JSON.stringify(ocultos));
+            renderizarContatos();
         }
 
         async function adicionarContato() {
             const n = prompt("Nome de usuário:"); if (!n) return;
             const { data } = await _supabase.from('usuarios').select('nome_usuario').eq('nome_usuario', n).maybeSingle();
             if (!data) return alert("USUÁRIO INEXISTENTE");
+            let ocultos = JSON.parse(localStorage.getItem(`ocultos_${usuarioAtual.nome_usuario}`) || "[]");
+            ocultos = ocultos.filter(item => item !== n);
+            localStorage.setItem(`ocultos_${usuarioAtual.nome_usuario}`, JSON.stringify(ocultos));
             let c = JSON.parse(localStorage.getItem(`contatos_${usuarioAtual.nome_usuario}`) || "[]");
-            if (!c.includes(n)) { c.push(n); localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c)); renderizarContatos(); }
+            if (!c.includes(n)) { c.push(n); localStorage.setItem(`contatos_${usuarioAtual.nome_usuario}`, JSON.stringify(c)); }
+            renderizarContatos();
         }
 
         async function autenticar() {
@@ -228,38 +252,148 @@
         }
 
         function sair() { localStorage.removeItem('usuario_estoque'); location.reload(); }
-        function mudarAba(aba) { document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden')); document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa')); document.getElementById(`aba-${aba}`).classList.remove('hidden'); document.getElementById(`btn-${aba}`).classList.add('aba-ativa'); if(aba === 'staff') carregarUsuariosStaff(); }
+        
+        function mudarAba(aba) { 
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden')); 
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa')); 
+            document.getElementById(`aba-${aba}`).classList.remove('hidden'); 
+            document.getElementById(`btn-${aba}`).classList.add('aba-ativa'); 
+            if(aba === 'staff') carregarUsuariosStaff();
+            if(aba === 'relatorios') carregarRelatoriosGraficos();
+        }
 
         async function carregarEstoque() { const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome'); todosOsItens = data || []; renderizarItens(todosOsItens); }
+        
         function renderizarItens(itens) {
             const lista = document.getElementById('lista-estoque'), categorias = {};
             itens.forEach(i => { const cat = i.categorias?.nome || "GERAL"; if (!categorias[cat]) categorias[cat] = []; categorias[cat].push(i); });
             lista.innerHTML = Object.keys(categorias).map(cat => `<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4"><div class="bg-gray-50 px-5 py-2 text-[9px] font-black text-gray-400 uppercase border-b tracking-widest">${cat}</div>${categorias[cat].map(item => `<div onclick='abrirModalUso(${JSON.stringify(item)})' class="p-5 border-b last:border-0 card-clicavel flex justify-between items-center"><div><p class="font-bold text-gray-800 text-sm">${item.nome} ${item.observacao ? '⚠️' : ''}</p><p class="text-[11px] font-black text-blue-500 uppercase">Qtd: ${item.quantidade}</p></div></div>`).join('')}</div>`).join('');
         }
+
+        async function adicionarQuantidadeEstoque() {
+            const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return;
+            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
+            if(!itens || itens.length === 0) return alert("Nenhum item cadastrado.");
+            const listaTxt = itens.map((item, index) => `${index}) ${item.nome} (Atual: ${item.quantidade})`).join('\n');
+            const escolha = prompt("Selecione o número do item para entrada:\n" + listaTxt);
+            if (escolha !== null && itens[escolha]) {
+                const itemSelecionado = itens[escolha];
+                const qtdAdicional = parseInt(prompt(`Quanto deseja adicionar ao estoque de ${itemSelecionado.nome}?`));
+                if (!isNaN(qtdAdicional) && qtdAdicional > 0) {
+                    const novaQtd = itemSelecionado.quantidade + qtdAdicional;
+                    const { error } = await _supabase.from('itens').update({ quantidade: novaQtd }).eq('id', itemSelecionado.id);
+                    if (error) alert("Erro ao atualizar: " + error.message);
+                    else {
+                        await _supabase.from('historico_movimentacao').insert([{ tipo: 'ENTRADA', quantidade: qtdAdicional, item_id: itemSelecionado.id }]);
+                        alert(`Estoque atualizado! ${itemSelecionado.nome}: ${novaQtd}`);
+                        carregarEstoque();
+                    }
+                } else { alert("Quantidade inválida."); }
+            }
+        }
+
         function filtrarItens() { const termo = document.getElementById('input-busca').value.toLowerCase(); renderizarItens(todosOsItens.filter(i => i.nome.toLowerCase().includes(termo))); }
+        
         function abrirModalUso(item) {
             document.getElementById('modal-titulo').innerText = item.nome; document.getElementById('info-estoque').innerText = `Estoque: ${item.quantidade}`; document.getElementById('modal-uso').classList.remove('hidden');
             document.getElementById('btn-confirmar-uso').onclick = async () => {
                 const obs = document.getElementById('input-obs').value.trim(), qtd = parseInt(document.getElementById('input-qtd').value);
-                if (!obs || isNaN(qtd) || qtd <= 0 || qtd > item.quantidade) return alert("Erro!");
-                await _supabase.from('itens').update({ quantidade: item.quantidade - qtd, observacao: obs, qtd_obs: qtd }).eq('id', item.id); fecharModal(); carregarEstoque(); verificarObservacoes();
+                if (!obs || isNaN(qtd) || qtd <= 0 || qtd > item.quantidade) return alert("Quantidade indisponível ou descrição vazia!");
+                const { error } = await _supabase.from('itens').update({ quantidade: item.quantidade - qtd, observacao: obs, qtd_obs: qtd }).eq('id', item.id);
+                if(!error) {
+                    await _supabase.from('historico_movimentacao').insert([{ tipo: 'SAIDA', quantidade: qtd, item_id: item.id }]);
+                    fecharModal(); carregarEstoque(); verificarObservacoes();
+                }
             };
         }
+
         function fecharModal() { document.getElementById('modal-uso').classList.add('hidden'); }
-        async function criarCategoria() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const n = prompt("Nome:"); if (n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); } }
-        async function criarItem() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const { data: cats } = await _supabase.from('categorias').select('*'); if(!cats) return; const idx = prompt("Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n')), n = prompt("Nome:"), q = parseInt(prompt("Qtd:", 0)); if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); } }
+        async function criarCategoria() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const n = prompt("Nome da Categoria:"); if (n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); } }
+        async function criarItem() { const p = prompt("Senha:"); if (p !== SENHA_ADMIN) return; const { data: cats } = await _supabase.from('categorias').select('*'); if(!cats) return; const idx = prompt("Selecione a Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n')), n = prompt("Nome do Produto:"), q = parseInt(prompt("Quantidade inicial:", 0)); if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); } }
+        
         async function verificarObservacoes() {
             const { data } = await _supabase.from('itens').select('*').not('observacao', 'is', null).neq('observacao', '');
             document.getElementById('btn-obs').classList.toggle('hidden', !data?.length);
             document.getElementById('lista-obs').innerHTML = data?.map(i => `<div class="bg-white p-4 rounded-2xl border-l-4 border-red-500 shadow-sm flex justify-between items-center mb-2"><p class="text-xs font-bold uppercase">${i.nome}: <span class="font-normal normal-case italic">"${i.observacao}"</span></p><button onclick="limparAlerta(${i.id})">✅</button></div>`).join('') || '';
         }
+
+        async function carregarRelatoriosGraficos() {
+            const container = document.getElementById('container-anos');
+            container.innerHTML = '<p class="text-center text-[10px] font-black text-gray-400 animate-pulse">CARREGANDO DADOS...</p>';
+            const { data: logs, error } = await _supabase.from('historico_movimentacao').select('*').order('criado_em', { ascending: false });
+            if (error || !logs || logs.length === 0) {
+                container.innerHTML = '<p class="text-center text-[10px] font-black text-red-400 uppercase p-10 bg-white rounded-2xl border">Sem histórico de movimentação.</p>';
+                return;
+            }
+            const estrutura = {};
+            logs.forEach(log => {
+                const d = new Date(log.criado_em);
+                const ano = d.getFullYear();
+                const mes = d.toLocaleString('pt-br', { month: 'long' }).toUpperCase();
+                if (!estrutura[ano]) estrutura[ano] = {};
+                if (!estrutura[ano][mes]) estrutura[ano][mes] = { entradas: 0, saidas: 0 };
+                if (log.tipo === 'ENTRADA') estrutura[ano][mes].entradas += log.quantidade;
+                else estrutura[ano][mes].saidas += log.quantidade;
+            });
+            container.innerHTML = '';
+            Object.keys(estrutura).forEach(ano => {
+                const anoCard = document.createElement('div');
+                anoCard.className = "bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden";
+                anoCard.innerHTML = `<div onclick="this.nextElementSibling.classList.toggle('hidden')" class="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50"><span class="text-xl font-black text-gray-800">${ano}</span><span class="text-blue-600 text-[10px] font-black uppercase">MESES ▾</span></div><div class="hidden border-t border-gray-50 bg-gray-50/50 p-4 space-y-4">${Object.keys(estrutura[ano]).map(mes => `<div class="bg-white p-4 rounded-xl border border-gray-100"><h4 class="text-[9px] font-black text-gray-400 mb-3 tracking-widest uppercase">${mes}</h4><div class="h-40 w-full"><canvas id="chart-${ano}-${mes}"></canvas></div></div>`).join('')}</div>`;
+                container.appendChild(anoCard);
+                Object.keys(estrutura[ano]).forEach(mes => {
+                    setTimeout(() => {
+                        const ctx = document.getElementById(`chart-${ano}-${mes}`).getContext('2d');
+                        new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['Entradas', 'Saídas'],
+                                datasets: [{ data: [estrutura[ano][mes].entradas, estrutura[ano][mes].saidas], backgroundColor: ['#10b981', '#ef4444'], borderRadius: 6 }]
+                            },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { display: false }, ticks: { font: { size: 9 } } }, x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } } } }
+                        });
+                    }, 50);
+                });
+            });
+        }
+
         async function limparAlerta(id) { await _supabase.from('itens').update({ observacao: null, qtd_obs: 0 }).eq('id', id); verificarObservacoes(); carregarEstoque(); }
+        
         async function carregarUsuariosStaff() {
             if (usuarioAtual.nome_usuario !== "Guilherme Cardoso Cirilo") return;
             const { data: u } = await _supabase.from('usuarios').select('id, nome_usuario, email').neq('nome_usuario', 'Guilherme Cardoso Cirilo');
-            document.getElementById('lista-usuarios-staff').innerHTML = u?.map(u => `<div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm"><div><p class="font-bold text-gray-800 text-xs uppercase">${u.nome_usuario}</p><p class="text-[9px] text-gray-400">${u.email}</p></div><button onclick="removerUsuario(${u.id}, '${u.nome_usuario}')" class="bg-red-50 text-red-500 p-2 rounded-lg text-[10px] font-black uppercase">Excluir</button></div>`).join('') || '';
+            document.getElementById('lista-usuarios-staff').innerHTML = u?.map(u => `
+                <div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
+                    <div>
+                        <p class="font-bold text-gray-800 text-xs uppercase">${u.nome_usuario}</p>
+                        <p class="text-[9px] text-gray-400">${u.email}</p>
+                    </div>
+                    <button onclick="removerUsuario(${u.id}, '${u.nome_usuario}')" class="bg-red-50 text-red-500 p-2 rounded-lg text-[10px] font-black uppercase">Excluir</button>
+                </div>`).join('') || '';
         }
-        async function removerUsuario(id, n) { if (confirm(`Excluir ${n}?`)) { await _supabase.from('usuarios').delete().eq('id', id); carregarUsuariosStaff(); } }
+
+        // FUNÇÃO DE EXCLUSÃO COMPLETA E CORRIGIDA
+        async function removerUsuario(id, nome) { 
+            if (confirm(`Tem certeza que deseja excluir ${nome}? Todas as mensagens e o cadastro serão apagados permanentemente.`)) { 
+                try {
+                    // Passo 1: Limpar todas as mensagens onde o usuário está envolvido
+                    // Isso remove o erro de "chave estrangeira" (foreign key) que bloqueia a exclusão
+                    const { error: msgError } = await _supabase.from('mensagens_chat').delete().or(`remetente.eq.${nome},destinatario.eq.${nome}`);
+                    if (msgError) throw msgError;
+
+                    // Passo 2: Excluir o registro do usuário
+                    const { error: userError } = await _supabase.from('usuarios').delete().eq('id', id);
+                    if (userError) throw userError;
+
+                    alert(`Usuário ${nome} excluído com sucesso!`);
+                    carregarUsuariosStaff(); // Recarrega a lista na tela
+                } catch (err) {
+                    console.error("Erro na exclusão:", err);
+                    alert("Erro ao excluir: " + err.message);
+                }
+            } 
+        }
+
         async function iniciarGravacao() {
             try {
                 const s = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(s); audioChunks = [];
